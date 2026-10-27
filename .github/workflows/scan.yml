@@ -9,13 +9,16 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
+    defaults:
+      run:
+        working-directory: owner
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip }
+        with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
       - run: python scan.py
       - uses: actions/upload-pages-artifact@v3
-        with: { path: docs }
+        with: { path: owner/docs }
       - id: deploy
         uses: actions/deploy-pages@v4
