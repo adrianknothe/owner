@@ -4,70 +4,111 @@
 <title>Owner – skaner rynku USA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root{--bg:#f3f5f2;--panel:#fff;--ink:#14231c;--mute:#6b7a72;--line:#dbe2dc;--up:#0f7a4d;--down:#b3322a;--acc:#1d3f5c}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1713;--panel:#17221c;--ink:#e6efe9;--mute:#8da096;--line:#27352d;--up:#47c98b;--down:#ee7b72;--acc:#4f86b3}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,"Times New Roman",serif}
-header{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;gap:6px 20px;flex-wrap:wrap;align-items:baseline}
-h1{margin:0;font-size:22px}.mute{color:var(--mute);font-size:13px}
-main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;padding:20px 24px;align-items:start}
-@media(max-width:1000px){main{grid-template-columns:1fr}}
-section{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:4px}
-h2{font-size:16px;margin:0 0 10px}
-input,select{font:inherit;padding:6px 10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:3px}
-input:focus-visible,select:focus-visible,tr:focus-visible,th:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tbl{max-height:70vh;overflow:auto}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{padding:6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}th:first-child,td:first-child{text-align:left}
-th{position:sticky;top:0;background:var(--panel);color:var(--mute);font-weight:normal;font-size:13px;cursor:pointer}
-tbody tr{cursor:pointer}tbody tr:hover,tr.sel{background:var(--bg)}
-.up{color:var(--up)}.down{color:var(--down)}.pill{padding:2px 8px;border-radius:10px;border:1px solid currentColor;font-size:13px}
-a{color:var(--acc)}
+:root{--bg:#eef1f4;--panel:#fff;--ink:#16202a;--mute:#66727f;--line:#dde3e9;--up:#13803f;--down:#bf2a2a;--warn:#b45309;--acc:#0f766e;--soft:#f5f7f9}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1218;--panel:#151c24;--ink:#e7edf3;--mute:#8c99a6;--line:#25303b;--up:#3ccb7a;--down:#f0716f;--warn:#e9a23b;--acc:#2dd4bf;--soft:#1b242e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 24px;display:flex;gap:8px 24px;flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:5}
+h1{margin:0;font-size:20px;letter-spacing:-.01em}.mute{color:var(--mute);font-size:13px}
+nav{display:flex;gap:4px;margin-left:auto}nav button{font:inherit;border:0;background:none;color:var(--mute);padding:7px 14px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--acc);color:#fff}nav button:focus-visible,.btn:focus-visible,tr:focus-visible,th:focus-visible,.card:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+main{max-width:1250px;margin:0 auto;padding:20px 24px}.tab{display:none}.tab.on{display:block}
+.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+h2{font-size:15px;margin:0 0 10px}.big{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}
+.pill{display:inline-block;padding:1px 9px;border-radius:10px;border:1px solid currentColor;font-size:12px;white-space:nowrap}
+.bar{display:flex;align-items:center;gap:8px;font-size:13px;margin:3px 0}.bar span:first-child{width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar i{display:block;height:10px;border-radius:3px}.track{flex:1;display:flex}.track div{flex:1;display:flex}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;cursor:pointer}.card:hover{border-color:var(--acc)}
+.plan{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;text-align:center}.plan div{background:var(--soft);border-radius:8px;padding:6px 2px}.plan b{display:block;font-variant-numeric:tabular-nums}.plan small{color:var(--mute);font-size:11px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+input,select{font:inherit;padding:6px 10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px}
+.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}.star{border:0;background:none;font-size:18px;cursor:pointer;color:var(--mute)}.star.on{color:var(--warn)}
+.tbl{overflow:auto;max-height:72vh}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}th:first-child,td:first-child{text-align:left}
+th{position:sticky;top:0;background:var(--panel);color:var(--mute);font-weight:500;font-size:12px;cursor:pointer}tbody tr{cursor:pointer}tbody tr:hover{background:var(--soft)}
+ul.news{list-style:none;padding:0;margin:6px 0}ul.news li{padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}ul.news a{color:var(--ink);text-decoration:none}ul.news a:hover{text-decoration:underline}
+dialog{width:min(860px,96vw);border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:18px}dialog::backdrop{background:#0008}
+.note{font-size:12px;color:var(--mute);margin-top:18px}
 </style></head><body>
-<header><h1>Owner</h1><span class="mute" id="meta">Ładowanie…</span><span class="mute">Sygnały informacyjne, nie porady inwestycyjne</span></header>
+<header><h1>Owner</h1><span class="mute" id="meta">Ładowanie…</span>
+<nav id="nav"><button data-t="ov" class="on">Przegląd</button><button data-t="ops">Okazje</button><button data-t="scan">Skaner</button><button data-t="watch">Obserwowane</button></nav></header>
 <main>
-<section><h2>Skaner rynku <span class="mute" id="count"></span></h2>
-<div class="row"><input id="q" placeholder="Szukaj symbolu" aria-label="Szukaj symbolu">
-<select id="sig" aria-label="Sygnał"><option value="">Wszystkie sygnały</option><option value="kupno">Kupno</option><option value="sprzedaż">Sprzedaż</option><option value="neutralnie">Neutralnie</option></select>
-<select id="idx" aria-label="Indeks"><option value="">Wszystkie indeksy</option><option>S&P 500</option><option>NASDAQ-100</option><option>S&P 400</option><option>S&P 600</option></select>
-<select id="minvol" aria-label="Min. średni wolumen"><option value="0">Dowolny wolumen</option><option value="500000">Śr. wolumen &gt; 500 tys.</option><option value="2000000">Śr. wolumen &gt; 2 mln</option></select></div>
-<div class="tbl"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div></section>
-<section><h2 id="title">Wybierz spółkę z tabeli</h2>
-<canvas id="price" height="170"></canvas>
-<p class="mute" id="why"></p><p id="links"></p></section>
+<div class="tab on" id="ov"><div class="grid g4" id="idx"></div><div class="grid g2" style="margin-top:14px">
+<div class="box"><h2>Nastrój rynku</h2><div id="mood"></div></div><div class="box"><h2>Sektory (zmiana dzienna, średnia)</h2><div id="sectors"></div></div></div>
+<div class="box" style="margin-top:14px"><h2>Wiadomości rynkowe</h2><ul class="news" id="mnews"></ul></div></div>
+
+<div class="tab" id="ops"><div class="row"><select id="ostype"><option value="">Wszystkie setupy</option><option>Wybicie</option><option>Trend</option><option>Odbicie</option></select>
+<select id="osq"><option value="0">Dowolna jakość</option><option value="60">Jakość ≥ 60</option><option value="75">Jakość ≥ 75</option></select>
+<label class="mute"><input type="checkbox" id="osnew"> tylko nowe sygnały</label>
+<label class="mute">Kapitał ($ <input id="cap" type="number" value="10000" style="width:100px"></label> <label class="mute">ryzyko na transakcję (%) <input id="risk" type="number" step=".25" value="1" style="width:70px"></label></div>
+<div class="grid g2" id="cards"></div></div>
+
+<div class="tab" id="scan"><div class="row"><input id="q" placeholder="Szukaj symbolu" aria-label="Szukaj symbolu">
+<select id="sig"><option value="">Wszystkie sygnały</option><option value="kupno">Kupno</option><option value="sprzedaż">Sprzedaż</option><option value="neutralnie">Neutralnie</option></select>
+<select id="idxf"><option value="">Wszystkie indeksy</option><option>S&P 500</option><option>NASDAQ-100</option><option>S&P 400</option><option>S&P 600</option></select>
+<select id="minvol"><option value="0">Dowolny wolumen</option><option value="500000">Śr. wol. &gt; 500 tys.</option><option value="2000000">Śr. wol. &gt; 2 mln</option></select><span class="mute" id="count"></span></div>
+<div class="box tbl"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div></div>
+
+<div class="tab" id="watch"><div class="row"><input id="wadd" placeholder="Dodaj symbol, np. NVDA" aria-label="Dodaj symbol"><button class="btn" id="wbtn">Dodaj</button><span class="mute">Lista zapisuje się w tej przeglądarce. Gwiazdką ★ dodasz spółkę z dowolnej tabeli.</span></div>
+<div class="box tbl"><table><thead><tr id="whead"></tr></thead><tbody id="wrows"></tbody></table></div></div>
+<p class="note">Sygnały i plany transakcji są generowane automatycznie z prostych reguł (ATR, RSI, MACD, SMA, wolumen) i służą wyłącznie informacji. To nie jest porada inwestycyjna ani gwarancja wyniku – reguły nie były testowane historycznie. Dane z Yahoo Finance mogą być opóźnione ~15 min.</p>
 </main>
+<dialog id="dlg"><div class="row"><h2 id="dt" style="margin:0;font-size:20px"></h2><span id="dsub" class="mute"></span><button class="btn" style="margin-left:auto" id="dx">Zamknij</button></div>
+<canvas id="ch" height="150"></canvas><div id="dplan"></div><p class="mute" id="dwhy"></p><h2>Wiadomości</h2><ul class="news" id="dnews"></ul><p id="dlinks"></p></dialog>
 <script>
-const $=s=>document.querySelector(s);
-const COLS=[['symbol','Symbol'],['price','Cena'],['change_pct','Dzień %'],['week_pct','5 dni %'],['rsi','RSI'],['vol_ratio','Wolumen ×'],['score','Sygnał']];
-let data=[],sortK='score',sortD=-1,cur=null,chart=null;
-$('#head').innerHTML=COLS.map(c=>`<th tabindex=0 data-k="${c[0]}">${c[1]}</th>`).join('');
-document.querySelectorAll('th').forEach(th=>{const f=()=>{const k=th.dataset.k;sortD=sortK==k?-sortD:-1;sortK=k;draw()};th.onclick=f;th.onkeydown=e=>e.key=='Enter'&&f()});
-['q','sig','idx','minvol'].forEach(i=>$('#'+i).oninput=draw);
-const pct=v=>`<span class="${v>=0?'up':'down'}">${v>0?'+':''}${v}%</span>`;
-function draw(){
-  const q=$('#q').value.trim().toUpperCase(),sg=$('#sig').value,ix=$('#idx').value,mv=+$('#minvol').value;
-  const d=data.filter(x=>(!q||x.symbol.includes(q))&&(!sg||x.label==sg)&&(!ix||x.index==ix)&&x.avg_vol>=mv);
-  d.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*sortD||(b.score-a.score));
-  $('#count').textContent=`(${d.length} z ${data.length})`;
-  $('#rows').innerHTML=d.slice(0,400).map(x=>`<tr tabindex=0 data-s="${x.symbol}" class="${x.symbol==cur?'sel':''}"><td><b>${x.symbol}</b> <span class="mute">${x.index}</span></td><td>${x.price}</td><td>${pct(x.change_pct)}</td><td>${pct(x.week_pct)}</td><td>${x.rsi}</td><td>×${x.vol_ratio}</td>
-  <td><span class="pill ${x.score>=2?'up':x.score<=-2?'down':''}">${x.label} (${x.score>0?'+':''}${x.score})</span></td></tr>`).join('')||'<tr><td colspan=7>Brak wyników dla tych filtrów.</td></tr>';
-  document.querySelectorAll('#rows tr[data-s]').forEach(tr=>{tr.onclick=()=>pick(tr.dataset.s);tr.onkeydown=e=>e.key=='Enter'&&pick(tr.dataset.s)});
-}
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+let D={results:[],news:{},indices:[],market_news:[]},wl=JSON.parse(localStorage.getItem('wl')||'["AAPL","NVDA","MSFT"]'),sortK='score',sortD=-1,chart=null,cur=null;
+const sv=()=>localStorage.setItem('wl',JSON.stringify(wl));
+const pc=v=>v==null?'–':`<span class="${v>=0?'up':'down'}">${v>0?'+':''}${v}%</span>`;
+const pill=x=>`<span class="pill ${x.score>=2?'up':x.score<=-2?'down':''}">${x.label} (${x.score>0?'+':''}${x.score})</span>`;
+const by=s=>D.results.find(x=>x.symbol==s);
+$$('nav button').forEach(b=>b.onclick=()=>{$$('nav button').forEach(x=>x.classList.toggle('on',x==b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==b.dataset.t))});
+const COLS=[['symbol','Symbol'],['price','Cena'],['change_pct','Dzień'],['week_pct','5 dni'],['month_pct','Miesiąc'],['rsi','RSI'],['adx','ADX'],['rs','Siła vs S&P'],['hi52_pct','Od szczytu 52t'],['atr_pct','ATR %'],['vol_ratio','Wol. ×'],['score','Sygnał']];
+function head(id,fn){$(id).innerHTML='<th></th>'+COLS.map(c=>`<th tabindex=0 data-k="${c[0]}">${c[1]}</th>`).join('');$$(id+' th[data-k]').forEach(th=>{const f=()=>{sortD=sortK==th.dataset.k?-sortD:-1;sortK=th.dataset.k;fn()};th.onclick=f;th.onkeydown=e=>e.key=='Enter'&&f()})}
+const tr=x=>`<tr tabindex=0 data-s="${x.symbol}"><td><button class="star ${wl.includes(x.symbol)?'on':''}" data-st="${x.symbol}" aria-label="Obserwuj">★</button></td><td><b>${x.symbol}</b> ${x.new?'<span class="pill up">nowy</span>':''} <span class="mute">${x.index}</span></td><td>${x.price}</td><td>${pc(x.change_pct)}</td><td>${pc(x.week_pct)}</td><td>${pc(x.month_pct)}</td><td>${x.rsi}</td><td>${x.adx}</td><td>${pc(x.rs)}</td><td>${pc(x.hi52_pct)}</td><td>${x.atr_pct}%</td><td>×${x.vol_ratio}</td><td>${pill(x)}</td></tr>`;
+function bind(id){$$(id+' tr[data-s]').forEach(t=>{t.onclick=e=>{if(e.target.dataset.st){tog(e.target.dataset.st);return}open_(t.dataset.s)};t.onkeydown=e=>e.key=='Enter'&&open_(t.dataset.s)})}
+function tog(s){wl=wl.includes(s)?wl.filter(x=>x!=s):[...wl,s];sv();drawAll()}
+function sorted(a){return a.sort((x,y)=>((x[sortK]??-999)>(y[sortK]??-999)?1:-1)*sortD||(y.score-x.score))}
+function drawScan(){const q=$('#q').value.trim().toUpperCase(),sg=$('#sig').value,ix=$('#idxf').value,mv=+$('#minvol').value;
+ const d=sorted(D.results.filter(x=>(!q||x.symbol.includes(q))&&(!sg||x.label==sg)&&(!ix||x.index==ix)&&x.avg_vol>=mv));
+ $('#count').textContent=`${d.length} z ${D.results.length}`;$('#rows').innerHTML=d.slice(0,400).map(tr).join('')||'<tr><td colspan=13>Brak wyników.</td></tr>';bind('#rows')}
+function drawWatch(){const d=sorted(wl.map(by).filter(Boolean));$('#wrows').innerHTML=d.map(tr).join('')||'<tr><td colspan=13>Pusta lista. Dodaj symbol powyżej lub kliknij ★ w tabeli.</td></tr>';bind('#wrows')}
+function drawOv(){
+ $('#idx').innerHTML=D.indices.map(i=>`<div class="box"><div class="mute">${i.name}</div><div class="big">${i.price}</div><div>${pc(i.change_pct)} dziś · ${pc(i.week_pct)} 5 dni · ${pc(i.month_pct)} mies.</div><div class="mute">RSI ${i.rsi} · ${i.symbol=='^VIX'?(i.price>25?'podwyższony strach':'spokojnie'):(i.above50?'powyżej SMA50 (trend wzrostowy)':'poniżej SMA50 (osłabienie)')}</div></div>`).join('');
+ const r=D.results,N=r.length||1,a50=Math.round(r.filter(x=>x.above50).length/N*100),buy=Math.round(r.filter(x=>x.label=='kupno').length/N*100),sell=Math.round(r.filter(x=>x.label=='sprzedaż').length/N*100),adv=Math.round(r.filter(x=>x.change_pct>0).length/N*100);
+ const m=a50>=60&&buy>sell?['Byczy','up']:a50<40||sell>buy*1.5?['Niedźwiedzi','down']:['Mieszany','warn'];
+ $('#mood').innerHTML=`<div class="big ${m[1]}">${m[0]}</div><div class="mute">Szerokość rynku z ${r.length} spółek</div><p>${a50}% spółek powyżej SMA50 · ${adv}% rośnie dziś<br>Sygnały: ${buy}% kupno · ${sell}% sprzedaż</p><p class="mute">Gdy większość rynku jest poniżej SMA50, długie pozycje mają statystycznie trudniej – ogranicz wielkość pozycji.</p>`;
+ const sec={};r.forEach(x=>{if(x.sector){(sec[x.sector]??={s:0,n:0});sec[x.sector].s+=x.change_pct||0;sec[x.sector].n++}});
+ const s=Object.entries(sec).map(([k,v])=>[k,v.s/v.n]).sort((a,b)=>b[1]-a[1]),mx=Math.max(...s.map(x=>Math.abs(x[1])),.1);
+ $('#sectors').innerHTML=s.map(([k,v])=>`<div class="bar"><span>${k}</span><div class="track"><div style="justify-content:flex-end">${v<0?`<i class="" style="width:${-v/mx*100}%;background:var(--down)"></i>`:''}</div><div>${v>=0?`<i style="width:${v/mx*100}%;background:var(--up)"></i>`:''}</div></div><span style="width:50px;text-align:right">${v.toFixed(2)}%</span></div>`).join('');
+ $('#mnews').innerHTML=nl(D.market_news)}
+const nl=a=>a&&a.length?a.map(n=>`<li><a href="${n.url}" target="_blank" rel="noopener">${n.title}</a> <span class="${n.sent>0?'up':n.sent<0?'down':'mute'}">${n.sent>0?'▲':n.sent<0?'▼':'•'}</span> <span class="mute">${n.publisher||''}</span></li>`).join(''):'<li class="mute">Brak wiadomości.</li>';
+function planHtml(x){const p=x.plan;if(!p)return '<p class="mute">Brak aktywnego setupu – spółka nie spełnia reguł wejścia (wybicie / trend / odbicie).</p>';
+ const cap=+$('#cap').value||0,rk=(+$('#risk').value||1)/100,risk=p.entry-p.stop,sh=Math.floor(cap*rk/risk),val=sh*p.entry;
+ return `<div class="plan"><div><small>Wejście</small><b>${p.entry}</b></div><div><small>Stop-loss</small><b class="down">${p.stop}</b></div><div><small>Cel 1 (R 1,5)</small><b class="up">${p.t1}</b></div><div><small>Cel 2 (R 3)</small><b class="up">${p.t2}</b></div></div>
+ <div class="mute">Horyzont: ${p.horizon} · ATR ${p.atr_pct}% dziennie · pozycja: ~${sh} szt. (${val.toFixed(0)} $), ryzyko ${(cap*rk).toFixed(0)} $</div>
+ <div class="mute">Zamykanie: stop przy ${p.stop}; połowa na Celu 1, reszta na Celu 2 lub gdy zamknięcie spadnie poniżej SMA20; po 10 sesjach bez ruchu wyjdź czasowo.</div>`}
+function drawOps(){const t=$('#ostype').value,q=+$('#osq').value,nw=$('#osnew').checked;
+ const d=D.results.filter(x=>x.plan&&(!t||x.plan.setup==t)&&x.plan.quality>=q&&(!nw||x.new)).sort((a,b)=>b.plan.quality-a.plan.quality).slice(0,40);
+ $('#cards').innerHTML=d.map(x=>`<div class="card" tabindex=0 data-s="${x.symbol}"><div class="row" style="margin:0"><b style="font-size:18px">${x.symbol}</b><span class="pill">${x.plan.setup}</span>${x.new?'<span class="pill up">nowy sygnał</span>':''}<span class="mute">jakość ${x.plan.quality}/100</span><button class="star ${wl.includes(x.symbol)?'on':''}" style="margin-left:auto" data-st="${x.symbol}">★</button></div>
+ <div class="mute">${x.sector||''} · ${x.price} $ ${pc(x.change_pct)} · RSI ${x.rsi} · ADX ${x.adx} · siła vs S&P ${pc(x.rs)}</div>${planHtml(x)}
+ ${x.earnings_days!=null?`<div class="warn">⚠ Wyniki kwartalne za ${x.earnings_days} dni – ryzyko luki cenowej.</div>`:''}
+ <div class="mute">${x.reasons.join(' · ')}</div>${(D.news[x.symbol]||[]).slice(0,2).map(n=>`<div style="font-size:13px;margin-top:4px">${n.sent>0?'▲':n.sent<0?'▼':'•'} ${n.title}</div>`).join('')}</div>`).join('')||'<p class="mute">Brak okazji spełniających filtry. Zmień filtry lub poczekaj na następny skan.</p>';
+ $$('#cards .card').forEach(c=>{c.onclick=e=>{if(e.target.dataset.st){tog(e.target.dataset.st);return}open_(c.dataset.s)};c.onkeydown=e=>e.key=='Enter'&&open_(c.dataset.s)})}
 const sma=(a,n)=>a.map((_,i)=>i<n-1?null:+(a.slice(i-n+1,i+1).reduce((s,v)=>s+v,0)/n).toFixed(2));
-function pick(s){
-  cur=s;const x=data.find(a=>a.symbol==s);$('#title').textContent=s;
-  const ln=(l,d,c)=>({label:l,data:d,borderColor:c,borderWidth:l=='Cena'?2:1,pointRadius:0,tension:.1});
-  chart&&chart.destroy();
-  chart=new Chart($('#price'),{type:'line',data:{labels:x.closes.map((_,i)=>i-x.closes.length+1),datasets:[ln('Cena',x.closes,'#4f86b3'),ln('SMA20',sma(x.closes,20),'#0f7a4d'),ln('SMA50',sma(x.closes,50),'#c98a1b')]},options:{animation:false,scales:{x:{title:{display:true,text:'dni sesyjne wstecz'},ticks:{maxTicksLimit:6}}}}});
-  $('#why').textContent=`${x.sector} · RSI ${x.rsi} · `+(x.reasons.join(' · ')||'Brak wyraźnych sygnałów');
-  $('#links').innerHTML=`<a href="https://finance.yahoo.com/quote/${s}/news" target="_blank" rel="noopener">Wiadomości na Yahoo Finance</a> · <a href="https://finance.yahoo.com/quote/${s}" target="_blank" rel="noopener">Pełny wykres</a>`;
-  document.querySelectorAll('#rows tr').forEach(t=>t.classList.toggle('sel',t.dataset.s==s));
-}
-async function load(){
-  try{const j=await (await fetch('results.json?'+Date.now())).json();
-    if(j.updated_at!=window._u){window._u=j.updated_at;data=j.results;draw()}
-    const min=Math.round((Date.now()/1000-j.updated_at)/60);
-    $('#meta').textContent=`Ostatni skan: ${new Date(j.updated_at*1000).toLocaleString('pl-PL')} (${min} min temu) · odświeżanie co ~20 min w godzinach sesji USA`;
-  }catch(e){$('#meta').textContent='Brak danych – uruchom pierwszy skan w zakładce Actions na GitHubie.'}
-}
+function open_(s){const x=by(s);if(!x)return;cur=s;$('#dt').textContent=s;$('#dsub').textContent=`${x.sector||''} · ${x.index}`;
+ const L=x.closes.length,ds=(l,d,c,w=1,dash)=>({label:l,data:d,borderColor:c,borderWidth:w,pointRadius:0,borderDash:dash||[],tension:.1}),sets=[ds('Cena',x.closes,'#2dd4bf',2),ds('SMA20',sma(x.closes,20),'#e9a23b'),ds('SMA50',sma(x.closes,50),'#8c99a6')];
+ if(x.plan){[['Wejście',x.plan.entry,'#8c99a6'],['Stop',x.plan.stop,'#f0716f'],['Cel 1',x.plan.t1,'#3ccb7a'],['Cel 2',x.plan.t2,'#3ccb7a']].forEach(a=>sets.push(ds(a[0],Array(L).fill(a[1]),a[2],1,[5,4])))}
+ chart&&chart.destroy();chart=new Chart($('#ch'),{type:'line',data:{labels:x.closes.map((_,i)=>i-L+1),datasets:sets},options:{animation:false,scales:{x:{title:{display:true,text:'dni sesyjne wstecz'},ticks:{maxTicksLimit:6}}}}});
+ $('#dplan').innerHTML=planHtml(x);$('#dwhy').textContent=x.reasons.join(' · ')||'Brak wyraźnych sygnałów';$('#dnews').innerHTML=D.news[s]?nl(D.news[s]):'<li class="mute">Newsy pobieramy dla najciekawszych spółek. Pełna lista na Yahoo Finance poniżej.</li>';
+ $('#dlinks').innerHTML=`<a href="https://finance.yahoo.com/quote/${s}/news" target="_blank" rel="noopener">Więcej wiadomości</a> · <a href="https://finance.yahoo.com/quote/${s}" target="_blank" rel="noopener">Pełny wykres</a>`;$('#dlg').showModal()}
+$('#dx').onclick=()=>$('#dlg').close();$('#dlg').onclick=e=>{if(e.target==$('#dlg'))$('#dlg').close()};
+function drawAll(){drawOv();drawOps();drawScan();drawWatch()}
+head('#head',()=>drawScan());head('#whead',()=>drawWatch());
+['q','sig','idxf','minvol'].forEach(i=>$('#'+i).oninput=drawScan);['ostype','osq','osnew','cap','risk'].forEach(i=>$('#'+i).oninput=()=>{drawOps();cur&&$('#dlg').open&&open_(cur)});
+$('#wbtn').onclick=()=>{const v=$('#wadd').value.trim().toUpperCase();if(v&&!wl.includes(v)){wl.push(v);sv();drawWatch()}$('#wadd').value=''};
+async function load(){try{const j=await(await fetch('results.json?'+Date.now())).json();if(j.updated_at!=window._u){window._u=j.updated_at;D=j;drawAll()}
+ $('#meta').textContent=`Skan: ${new Date(j.updated_at*1000).toLocaleString('pl-PL')} (${Math.round((Date.now()/1000-j.updated_at)/60)} min temu) · ${j.results.length} spółek · odświeżanie co ~20 min w godzinach sesji USA`}catch(e){$('#meta').textContent='Brak danych – uruchom skan w zakładce Actions.'}}
 load();setInterval(load,60000);
 </script></body></html>
