@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Owner – skaner rynku USA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f3f5f2;--panel:#fff;--ink:#14231c;--mute:#6b7a72;--line:#dbe2dc;--up:#0f7a4d;--down:#b3322a;--acc:#1d3f5c}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1713;--panel:#17221c;--ink:#e6efe9;--mute:#8da096;--line:#27352d;--up:#47c98b;--down:#ee7b72;--acc:#4f86b3}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,"Times New Roman",serif}
+header{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;gap:6px 20px;flex-wrap:wrap;align-items:baseline}
+h1{margin:0;font-size:22px}.mute{color:var(--mute);font-size:13px}
+main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;padding:20px 24px;align-items:start}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:4px}
+h2{font-size:16px;margin:0 0 10px}
+input,select{font:inherit;padding:6px 10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:3px}
+input:focus-visible,select:focus-visible,tr:focus-visible,th:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tbl{max-height:70vh;overflow:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}th:first-child,td:first-child{text-align:left}
+th{position:sticky;top:0;background:var(--panel);color:var(--mute);font-weight:normal;font-size:13px;cursor:pointer}
+tbody tr{cursor:pointer}tbody tr:hover,tr.sel{background:var(--bg)}
+.up{color:var(--up)}.down{color:var(--down)}.pill{padding:2px 8px;border-radius:10px;border:1px solid currentColor;font-size:13px}
+a{color:var(--acc)}
+</style></head><body>
+<header><h1>Owner</h1><span class="mute" id="meta">Ładowanie…</span><span class="mute">Sygnały informacyjne, nie porady inwestycyjne</span></header>
+<main>
+<section><h2>Skaner rynku <span class="mute" id="count"></span></h2>
+<div class="row"><input id="q" placeholder="Szukaj symbolu" aria-label="Szukaj symbolu">
+<select id="sig" aria-label="Sygnał"><option value="">Wszystkie sygnały</option><option value="kupno">Kupno</option><option value="sprzedaż">Sprzedaż</option><option value="neutralnie">Neutralnie</option></select>
+<select id="idx" aria-label="Indeks"><option value="">Wszystkie indeksy</option><option>S&P 500</option><option>NASDAQ-100</option><option>S&P 400</option><option>S&P 600</option></select>
+<select id="minvol" aria-label="Min. średni wolumen"><option value="0">Dowolny wolumen</option><option value="500000">Śr. wolumen &gt; 500 tys.</option><option value="2000000">Śr. wolumen &gt; 2 mln</option></select></div>
+<div class="tbl"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section><h2 id="title">Wybierz spółkę z tabeli</h2>
+<canvas id="price" height="170"></canvas>
+<p class="mute" id="why"></p><p id="links"></p></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const COLS=[['symbol','Symbol'],['price','Cena'],['change_pct','Dzień %'],['week_pct','5 dni %'],['rsi','RSI'],['vol_ratio','Wolumen ×'],['score','Sygnał']];
+let data=[],sortK='score',sortD=-1,cur=null,chart=null;
+$('#head').innerHTML=COLS.map(c=>`<th tabindex=0 data-k="${c[0]}">${c[1]}</th>`).join('');
+document.querySelectorAll('th').forEach(th=>{const f=()=>{const k=th.dataset.k;sortD=sortK==k?-sortD:-1;sortK=k;draw()};th.onclick=f;th.onkeydown=e=>e.key=='Enter'&&f()});
+['q','sig','idx','minvol'].forEach(i=>$('#'+i).oninput=draw);
+const pct=v=>`<span class="${v>=0?'up':'down'}">${v>0?'+':''}${v}%</span>`;
+function draw(){
+  const q=$('#q').value.trim().toUpperCase(),sg=$('#sig').value,ix=$('#idx').value,mv=+$('#minvol').value;
+  const d=data.filter(x=>(!q||x.symbol.includes(q))&&(!sg||x.label==sg)&&(!ix||x.index==ix)&&x.avg_vol>=mv);
+  d.sort((a,b)=>(a[sortK]>b[sortK]?1:-1)*sortD||(b.score-a.score));
+  $('#count').textContent=`(${d.length} z ${data.length})`;
+  $('#rows').innerHTML=d.slice(0,400).map(x=>`<tr tabindex=0 data-s="${x.symbol}" class="${x.symbol==cur?'sel':''}"><td><b>${x.symbol}</b> <span class="mute">${x.index}</span></td><td>${x.price}</td><td>${pct(x.change_pct)}</td><td>${pct(x.week_pct)}</td><td>${x.rsi}</td><td>×${x.vol_ratio}</td>
+  <td><span class="pill ${x.score>=2?'up':x.score<=-2?'down':''}">${x.label} (${x.score>0?'+':''}${x.score})</span></td></tr>`).join('')||'<tr><td colspan=7>Brak wyników dla tych filtrów.</td></tr>';
+  document.querySelectorAll('#rows tr[data-s]').forEach(tr=>{tr.onclick=()=>pick(tr.dataset.s);tr.onkeydown=e=>e.key=='Enter'&&pick(tr.dataset.s)});
+}
+const sma=(a,n)=>a.map((_,i)=>i<n-1?null:+(a.slice(i-n+1,i+1).reduce((s,v)=>s+v,0)/n).toFixed(2));
+function pick(s){
+  cur=s;const x=data.find(a=>a.symbol==s);$('#title').textContent=s;
+  const ln=(l,d,c)=>({label:l,data:d,borderColor:c,borderWidth:l=='Cena'?2:1,pointRadius:0,tension:.1});
+  chart&&chart.destroy();
+  chart=new Chart($('#price'),{type:'line',data:{labels:x.closes.map((_,i)=>i-x.closes.length+1),datasets:[ln('Cena',x.closes,'#4f86b3'),ln('SMA20',sma(x.closes,20),'#0f7a4d'),ln('SMA50',sma(x.closes,50),'#c98a1b')]},options:{animation:false,scales:{x:{title:{display:true,text:'dni sesyjne wstecz'},ticks:{maxTicksLimit:6}}}}});
+  $('#why').textContent=`${x.sector} · RSI ${x.rsi} · `+(x.reasons.join(' · ')||'Brak wyraźnych sygnałów');
+  $('#links').innerHTML=`<a href="https://finance.yahoo.com/quote/${s}/news" target="_blank" rel="noopener">Wiadomości na Yahoo Finance</a> · <a href="https://finance.yahoo.com/quote/${s}" target="_blank" rel="noopener">Pełny wykres</a>`;
+  document.querySelectorAll('#rows tr').forEach(t=>t.classList.toggle('sel',t.dataset.s==s));
+}
+async function load(){
+  try{const j=await (await fetch('results.json?'+Date.now())).json();
+    if(j.updated_at!=window._u){window._u=j.updated_at;data=j.results;draw()}
+    const min=Math.round((Date.now()/1000-j.updated_at)/60);
+    $('#meta').textContent=`Ostatni skan: ${new Date(j.updated_at*1000).toLocaleString('pl-PL')} (${min} min temu) · odświeżanie co ~20 min w godzinach sesji USA`;
+  }catch(e){$('#meta').textContent='Brak danych – uruchom pierwszy skan w zakładce Actions na GitHubie.'}
+}
+load();setInterval(load,60000);
+</script></body></html>
