@@ -1,0 +1,2 @@
+# Własne symbole (format Yahoo Finance), po jednym w linii lub po przecinku. Dodaj tu instrumenty z XTB spoza USA,
+# np. europejskie ETF-y: VWCE.DE, CNDX.L, IUSQ.DE, spółki z GPW: CDR.WA, PKO.WA

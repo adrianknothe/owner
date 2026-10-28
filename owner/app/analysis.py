@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 
 POS = {"beat", "beats", "surge", "surges", "soar", "soars", "jump", "jumps", "upgrade", "record",
@@ -15,7 +16,7 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     ema12, ema26 = c.ewm(span=12, adjust=False).mean(), c.ewm(span=26, adjust=False).mean()
     df["MACD"] = ema12 - ema26
     df["MACD_SIG"] = df["MACD"].ewm(span=9, adjust=False).mean()
-    df["SMA20"], df["SMA50"] = c.rolling(20).mean(), c.rolling(50).mean()
+    df["SMA20"], df["SMA50"], df["SMA200"] = c.rolling(20).mean(), c.rolling(50).mean(), c.rolling(200).mean()
     sd = c.rolling(20).std()
     df["BB_UP"], df["BB_LO"] = df["SMA20"] + 2 * sd, df["SMA20"] - 2 * sd
     df["VOL_RATIO"] = df["Volume"] / df["Volume"].rolling(20).mean()
@@ -39,11 +40,6 @@ def signal(df: pd.DataFrame) -> dict:
         why.append(f"Skok wolumenu x{r.VOL_RATIO:.1f}")
     label = "kupno" if score >= 2 else "sprzedaż" if score <= -2 else "neutralnie"
     return {"score": int(score), "label": label, "reasons": why}
-
-
-def sentiment(title: str) -> int:
-    w = set(title.lower().replace(",", " ").replace(".", " ").split())
-    return len(w & POS) - len(w & NEG)
 
 
 def extra(df: pd.DataFrame) -> pd.DataFrame:
@@ -84,3 +80,22 @@ def plan(df: pd.DataFrame, sig: dict, rs: float):
     return {"setup": kind, "quality": int(max(0, min(100, q))), "entry": round(px, 2),
             "stop": round(px - risk, 2), "t1": round(px + 1.5 * risk, 2), "t2": round(px + 3 * risk, 2),
             "horizon": hor, "atr_pct": round(atr / px * 100, 2)}
+
+
+PHRASES = {
+    "beats estimates": 2, "beat estimates": 2, "tops estimates": 2, "raises guidance": 2, "raised guidance": 2, "raises outlook": 2,
+    "price target raised": 2, "raises price target": 2, "record revenue": 2, "record profit": 2, "record high": 1, "upgraded": 2,
+    "upgrades": 2, "buyback": 1, "strong demand": 1, "surges": 2, "soars": 2, "jumps": 1, "rallies": 1, "outperform": 1,
+    "approval": 1, "approved": 1, "wins contract": 2, "partnership": 1, "expands": 1, "beats": 1,
+    "misses estimates": -2, "missed estimates": -2, "cuts guidance": -2, "lowers guidance": -2, "cuts outlook": -2,
+    "price target cut": -2, "lowers price target": -2, "downgraded": -2, "downgrades": -2, "sec investigation": -2,
+    "class action": -2, "lawsuit": -1, "recall": -1, "plunges": -2, "tumbles": -2, "sinks": -2, "slides": -1, "falls": -1,
+    "drops": -1, "layoffs": -1, "bankruptcy": -3, "fraud": -3, "probe": -1, "warning": -1, "halts": -1, "delisting": -3,
+    "misses": -1, "short seller": -2, "data breach": -2,
+}
+
+
+def sentiment(title: str) -> int:
+    """Ocena tytułu -3..+3 na podstawie słownika fraz finansowych (orientacyjna)."""
+    t = title.lower()
+    return max(-3, min(3, sum(v for k, v in PHRASES.items() if re.search(r"\b" + re.escape(k), t))))
