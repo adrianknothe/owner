@@ -60,7 +60,7 @@ def row(sym, df, meta, spy3m):
             "dvol": n((df.Close * df.Volume).tail(20).mean() / 1e6, 1), "atr_pct": n(r.ATR / r.Close * 100),
             "rs": n((ret3m - spy3m) * 100, 1), "hi52_pct": n((r.Close / df.High.tail(252).max() - 1) * 100, 1),
             "above50": bool(r.Close > r.SMA50), "above200": bool(r.Close > r.SMA200) if r.SMA200 == r.SMA200 else None,
-            "sma20": n(r.SMA20), **sig, "plan": plan(df, sig, ret3m - spy3m)}
+            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": plan(df, sig, ret3m - spy3m)}
 
 
 # ---------- źródła informacji ----------
@@ -183,11 +183,14 @@ def fin(sym):
 
 
 def prev_json(name):
-    try:
-        repo = os.getenv("GITHUB_REPOSITORY", "adrianknothe/owner").split("/")
-        return requests.get(f"https://{repo[0]}.github.io/{repo[1]}/{name}", timeout=30).json()
-    except Exception:
+    """Poprzednia wersja pliku z GitHub Pages. 404 = pierwszy skan; inny błąd przerywa skan,
+    żeby nie nadpisać archiwum (Pages podmienia całą stronę przy każdym wdrożeniu)."""
+    repo = os.getenv("GITHUB_REPOSITORY", "adrianknothe/owner").split("/")
+    r = requests.get(f"https://{repo[0]}.github.io/{repo[1]}/{name}", timeout=30)
+    if r.status_code == 404:
         return {}
+    r.raise_for_status()
+    return r.json()
 
 
 def earnings_days(sym):
@@ -253,12 +256,102 @@ def verdict(r, mood):
         flags.append("Słaby rynek ogólny – zmniejsz wielkość pozycji")
     if (r.get("reddit") or {}).get("rank", 999) <= 25:
         flags.append("Wysokie zainteresowanie na Reddit – ryzyko nagłych ruchów (hype)")
-    r.update(lv=lv, vscore=round(tot, 2), conf=conf, flags=flags, comps={k: v[::2] if k != "tech" else [v[0]] for k, v in c.items()})
+    r.update(lv=lv, vscore=round(tot, 2), conf=conf, compl=round(sum(v[1] for v in c.values()) * 100), flags=flags, comps={k: v[::2] if k != "tech" else [v[0]] for k, v in c.items()})
+
+
+
+COST = 0.001  # założenie: 0,1% na stronę (prowizja + poślizg)
+SETUPS = ("Wybicie", "Trend", "Odbicie")
+
+
+def fx_rates():
+    out = {"PLN": {"r": 1.0, "d": None, "src": "—"}}
+    pairs = {c: f"{c}PLN=X" for c in ("USD", "EUR", "GBP", "CHF", "CZK", "SEK", "NOK", "DKK")}
+    d = dl(list(pairs.values()), "7d")
+    for c, t in pairs.items():
+        try:
+            sr = d[t]["Close"].dropna()
+            out[c] = {"r": n(sr.iloc[-1], 4), "d": sr.index[-1].strftime("%Y-%m-%d"), "src": f"Yahoo Finance ({t}, zamknięcie dzienne)"}
+        except Exception:
+            pass
+    return out
+
+
+def eval_one(s, after, bench):
+    """Ocena sygnału na danych dziennych. Wejście: otwarcie NASTĘPNEJ sesji + poślizg (sygnał nie jest dostępny przed zamknięciem).
+    Jeśli stop i cel mieszczą się w jednej świecy, kolejność jest nieznana -> 'amb' (nie zakładamy korzystnej)."""
+    if len(after) < 1:
+        return
+    entry = float(after.Open.iloc[0]) * (1 + COST)
+    bn = bench.loc[bench.index.intersection(after.index)] if bench is not None else None
+    for k in (5, 10, 20):
+        if len(after) >= k:
+            s[f"r{k}"] = round((float(after.Close.iloc[k - 1]) * (1 - COST) / entry - 1) * 100, 2)
+            if bn is not None and len(bn) >= k:
+                s[f"b{k}"] = round((float(bn.Close.iloc[k - 1]) / float(bn.Open.iloc[0]) - 1) * 100, 2)
+    s["mfe"], s["mae"], s["n"] = round((float(after.High.max()) / entry - 1) * 100, 2), round((float(after.Low.min()) / entry - 1) * 100, 2), len(after)
+    s["ex"] = None
+    for _, b in after.iterrows():
+        hs, ht = b.Low <= s["s"], b.High >= s["t1"]
+        if hs or ht:
+            s["ex"] = "amb" if hs and ht else "stop" if hs else "t1"
+            break
+
+
+def archive(S, rows):
+    cut = time.time() - 7 * 86400
+    recent = {(x["sym"], x["setup"]) for x in S if x["ts"] > cut}
+    for r in rows:
+        p = r["plan"]
+        if r["lv"] >= 3 and p and (r["symbol"], p["setup"]) not in recent:
+            S.append({"sym": r["symbol"], "ts": int(time.time()), "bd": r["bar"][0], "bar": r["bar"][1:], "setup": p["setup"], "px": r["price"], "lv": r["lv"],
+                      "vs": r["vscore"], "cf": r["conf"], "cp": r.get("compl"), "comps": {k: v[0] for k, v in (r.get("comps") or {}).items()},
+                      "e": p["entry"], "s": p["stop"], "t1": p["t1"], "t2": p["t2"]})
+    todo = [x for x in S if "r20" not in x and x["ts"] < time.time() - 86400]
+    syms = sorted({x["sym"] for x in todo} | {"SPY"})
+    bars = {}
+    for i in range(0, len(syms), 100):
+        d = dl(syms[i:i + 100], "3mo")
+        for t in syms[i:i + 100]:
+            try:
+                bars[t] = d[t].dropna(subset=["Close"])
+            except Exception:
+                pass
+    for x in todo:
+        df = bars.get(x["sym"])
+        if df is not None:
+            eval_one(x, df[df.index.strftime("%Y-%m-%d") > x["bd"]].head(20), bars.get("SPY"))
+    return S[-3000:]
+
+
+def sig_stats(S):
+    out = {}
+    for st in SETUPS:
+        g = [x for x in S if x["setup"] == st]
+        o = {"n": len(g), "from": min((x["ts"] for x in g), default=None), "to": max((x["ts"] for x in g), default=None)}
+        for k in (5, 10, 20):
+            h = [x for x in g if f"r{k}" in x]
+            o[f"n{k}"] = len(h)
+            if h:
+                o[f"w{k}"] = round(100 * sum(x[f"r{k}"] > 0 for x in h) / len(h))
+                o[f"a{k}"] = round(sum(x[f"r{k}"] for x in h) / len(h), 2)
+                hb = [x for x in h if f"b{k}" in x]
+                if hb:
+                    o[f"x{k}"] = round(sum(x[f"r{k}"] - x[f"b{k}"] for x in hb) / len(hb), 2)
+        ev = [x for x in g if "ex" in x]
+        o.update(ev=len(ev), t1=sum(x["ex"] == "t1" for x in ev), stop=sum(x["ex"] == "stop" for x in ev), amb=sum(x["ex"] == "amb" for x in ev))
+        if ev:
+            o["mfe"], o["mae"] = round(sum(x["mfe"] for x in ev) / len(ev), 2), round(sum(x["mae"] for x in ev) / len(ev), 2)
+        out[st] = o
+    return out
 
 
 def main():
+    FUND0 = prev_json("fundamentals.json").get("d", {})  # najpierw archiwa: błąd sieci = przerwanie, bez utraty danych
+    SIG0 = prev_json("signals.json")
     uni = get_universe()
     syms = list(uni)
+    attempted = 0
     spy = yf.download("SPY", period="1y", auto_adjust=True, progress=False)
     spy.columns = spy.columns.get_level_values(0)
     spy3m = float(spy.Close.iloc[-1] / spy.Close.iloc[-64] - 1)
@@ -268,6 +361,7 @@ def main():
     for i in range(0, len(syms), CHUNK):
         if elapsed() > 13:
             print(f"Przekroczono budżet czasu – przeskanowano {i} z {len(syms)}"); break
+        attempted = min(i + CHUNK, len(syms))
         data = dl(syms[i:i + CHUNK], "1y")
         if data is None:
             continue
@@ -292,7 +386,7 @@ def main():
               "adv": round(sum((r["change_pct"] or 0) > 0 for r in rows) / N * 100)}
 
     # etap 2: Reddit, newsy, analitycy, social, wyniki – dla najciekawszych spółek
-    FUND = prev_json("fundamentals.json").get("d", {})
+    FUND = FUND0
     reddit = apewisdom()
     for r in rows:
         r["reddit"] = reddit.get(r["symbol"])
@@ -342,6 +436,13 @@ def main():
     except Exception as e:
         print("fundamentals:", e)
 
+    for r in rows:
+        m = (FUND.get(r["symbol"]) or {}).get("m") or {}
+        if r["extra"] and m.get("qt"):
+            r["etf"] = m["qt"] == "ETF"
+            r["index"] = "ETF" if r["etf"] else r["index"]
+        r["cur"] = m.get("cur") if r["extra"] else "USD"
+
     # poprzedni wynik -> oznacz nowe rekomendacje kupna
     try:
         repo = os.getenv("GITHUB_REPOSITORY", "adrianknothe/owner").split("/")
@@ -379,10 +480,19 @@ def main():
         except Exception as e:
             print("indeks", s, e)
 
+    signals = archive(SIG0.get("signals", []), rows)
+    for r in rows:
+        r.pop("bar", None)
+    Path("docs").mkdir(exist_ok=True)
+    Path("docs/signals.json").write_text(json.dumps({"updated": time.time(), "cost_pct": COST * 100, "signals": signals, "stats": sig_stats(signals)}, separators=(",", ":"), allow_nan=False))
+    fx = fx_rates()
     fng = jget("https://production.dataviz.cnn.io/index/fearandgreed/graphdata").get("fear_and_greed", {})
     top_reddit = [{"s": k, **v} for k, v in sorted(reddit.items(), key=lambda kv: kv[1]["rank"])[:12]]
     out = {"updated_at": time.time(), "indices": idx, "market": market, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
-           "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "results": rows}
+           "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
+           "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
+                    "news": len(news), "fund": len(FUND), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
+           "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))
     print(f"OK: {len(rows)} spółek (z {len(syms)}), {sum(r['lv'] >= 3 for r in rows)} rekomendacji kupna, {elapsed():.1f} min")

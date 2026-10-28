@@ -16,3 +16,11 @@ Nie jest to porada inwestycyjna.
 - Po 60 dniach bez aktywności w repo GitHub wyłącza harmonogram – wystarczy kliknąć „Enable workflow”.
 - Dane z Yahoo mogą być opóźnione ~15 min; yfinance to nieoficjalny dostęp.
 - Strona jest publiczna (bez hasła) – nie wrzucaj tu nic prywatnego.
+
+## Testy
+    python tests/test_core.py                        # wskaźniki, rekomendacja, ocena sygnałów, brak danych
+    npm i xlsx && node tests/test_portfolio.js       # wycena walutowa, import XTB, deduplikacja, renderowanie
+
+## Pliki generowane przy skanie (GitHub Pages)
+`results.json`, `fundamentals.json`, `signals.json` (archiwum sygnałów), `h/*.json` (historia cen). Archiwa są pobierane z poprzedniego
+wdrożenia; błąd sieci przy ich pobraniu przerywa skan, żeby nie nadpisać danych.
