@@ -37,4 +37,8 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
  D={results:[{symbol:'SAP.DE',name:'SAP',mkt:'DE',cur:'EUR',price:200.5,exch:'XETRA',index:'DAX',lv:3,vscore:1,conf:'niska',compl:55,dvol:90,flags:[],reasons:[],plan:null,comps:{tech:[1]},change_pct:1,week_pct:1,month_pct:1,rsi:50,adx:20,vol_ratio:1,atr_pct:2,rs:null,hi52_pct:-3}],indices:[],news:{},market_news:[],reddit:[],st_trending:[],market:{name:'Byczy',a50:60,adv:50,buy:20,sell:10},market_by:{DE:{name:'Mieszany',a50:50,n:80}},fx:{}};
  assert(tr(D.results[0]).includes('EUR'));assert.strictEqual(accDist('Vanguard FTSE All-World UCITS ETF (USD) Accumulating'),'Akumulujący');assert.strictEqual(accDist('iShares Core DAX UCITS ETF (DE) EUR (Dist)'),'Dystrybuujący');assert.strictEqual(accDist('SPDR S&P 500'),null);
  drawOv();drawScan();console.log('FEATURES2 OK')})().catch(e=>{console.error('FAIL2',e);process.exit(1)});
+
+// zakładka długoterminowa i wiadomości z pamięci
+(async()=>{D={results:[{symbol:'AAA',name:'Alfa',mkt:'US',sector:'IT',exch:'NASDAQ',etf:false,lt:{s:80,l:'Silne',a:'Gromadź',cov:90,p:{quality:90,growth:80,value:60,safety:70,income:null,trend:90},why:['ROE 28%'],fl:[]}},{symbol:'ETFX',etf:true,lt:null},{symbol:'BBB',name:'Beta',mkt:'DE',etf:false,lt:null}],news:{},market_news:[],indices:[]};NW={AAA:{ts:1,items:[{title:'X <b>',url:'javascript:alert(1)',src:'S',ts:1,sent:0}]}};
+ drawLt();const nh=newsFor('AAA');assert(nh.includes('&lt;b&gt;')&&!nh.includes('javascript:alert')&&nh.includes('href="#"'));assert(newsFor('ZZZ').includes('Brak zapisanych'));console.log('FEATURES3 OK')})().catch(e=>{console.error('FAIL3',e);process.exit(1)});
 `);

@@ -16,6 +16,7 @@ from app.universe import UA, get_universe
 
 T0 = time.time()
 NAME = {}
+FUND_N, NEWS_N = 120, 150  # ile symboli odświeżamy na skan (rotacyjnie, z archiwum poprzednich skanów)
 CORE = ("S&P 500", "NASDAQ-100", "DAX", "FTSE 100", "WIG20")  # w pierwszej kolejności: dane finansowe i historia 5-letnia
 CHUNK = 100
 ST_FAIL = [0]
@@ -414,9 +415,45 @@ def send_telegram(msgs):
         return False
 
 
+def long_term(r, e):
+    """Ocena długoterminowa (12–36 mies.) z danych finansowych. Progi bezwzględne, bez korekty branżowej; None gdy za mało danych."""
+    m, y = (e or {}).get("m") or {}, (e or {}).get("y") or {}
+    if not m:
+        return None
+    sc = lambda v, lo, hi: None if v is None else max(0.0, min(1.0, (v - lo) / (hi - lo)))
+    inv = lambda v: None if v is None else 1 - v
+    avg = lambda xs: (sum(x for x in xs if x is not None) / len([x for x in xs if x is not None])) if any(x is not None for x in xs) else None
+    rev = y.get("rev") or []
+    cagr = ((rev[-1][1] / rev[0][1]) ** (1 / (len(rev) - 1)) - 1) * 100 if len(rev) >= 3 and (rev[0][1] or 0) > 0 and (rev[-1][1] or 0) > 0 else None
+    fcfm = m["fcf"] / m["rev"] * 100 if m.get("fcf") is not None and m.get("rev") else None
+    pe = m["pe"] if (m.get("pe") or 0) > 0 else None
+    up = (m["target"] / r["price"] - 1) * 100 if m.get("target") and r.get("price") else None
+    dy = m["dr"] / r["price"] * 100 if m.get("dr") and r.get("price") else None
+    P = {"quality": (avg([sc(m.get("roe"), 5, 25), sc(m.get("om"), 5, 25), sc(m.get("pm"), 3, 20), sc(fcfm, 0, 12)]), .30),
+         "growth": (avg([sc(m.get("revg"), 0, 20), sc(cagr, 0, 15)]), .25),
+         "value": (avg([inv(sc(pe, 12, 40)), inv(sc(m["fpe"] if (m.get("fpe") or 0) > 0 else None, 12, 35)), inv(sc(m["evebitda"] if (m.get("evebitda") or 0) > 0 else None, 8, 25)), sc(up, -5, 25)]), .20),
+         "safety": (avg([inv(sc(m.get("de"), 50, 250)), sc(m.get("cr"), .8, 2.0)]), .15),
+         "income": (avg([sc(dy, 0, 4), inv(sc(m.get("payout"), 60, 110))]) if dy else None, .05),
+         "trend": (avg([None if r.get("above200") is None else float(r["above200"]), sc(r.get("hi52_pct"), -40, -5)]), .05)}
+    av = {k: v for k, v in P.items() if v[0] is not None}
+    cov = round(sum(w for _, w in av.values()) * 100)
+    if cov < 40 or "quality" not in av and "growth" not in av:
+        return None
+    s = round(sum(v * w for v, w in av.values()) / sum(w for _, w in av.values()) * 100)
+    p = {k: (round(v[0] * 100) if v[0] is not None else None) for k, v in P.items()}
+    tr_ok, val_ok = (av["trend"][0] >= .5) if "trend" in av else True, (av["value"][0] >= .3) if "value" in av else True
+    act = "Gromadź" if s >= 65 and tr_ok and val_ok else "Obserwuj" if s >= 55 else "Unikaj" if s < 40 else "Trzymaj"
+    why = [t for t in (f"ROE {m['roe']:.0f}%" if m.get("roe") is not None else None, f"marża operacyjna {m['om']:.0f}%" if m.get("om") is not None else None, f"wzrost przychodów {m['revg']:.0f}% r/r" if m.get("revg") is not None else None,
+                       f"P/E {m['pe']:.0f}" if pe else None, f"cel analityków {up:+.0f}%" if up is not None else None, f"dywidenda {dy:.1f}%" if dy else None) if t]
+    fl = [t for t in ("strata netto (brak sensownego P/E)" if (m.get("eps") or 0) < 0 else None, "ujemny free cash flow" if (m.get("fcf") or 0) < 0 else None, "spadek przychodów" if (m.get("revg") or 0) < 0 else None,
+                      "wysokie zadłużenie" if (m.get("de") or 0) > 200 else None, "payout > 90%" if (m.get("payout") or 0) > 90 else None, "cena poniżej SMA200" if r.get("above200") is False else None) if t]
+    return {"s": s, "l": "Silne" if s >= 70 else "Dobre" if s >= 55 else "Przeciętne" if s >= 40 else "Słabe", "a": act, "cov": cov, "p": p, "why": why, "fl": fl}
+
+
 def main():
     FUND0 = prev_json("fundamentals.json").get("d", {})  # najpierw archiwa: błąd sieci = przerwanie, bez utraty danych
     SIG0 = prev_json("signals.json")
+    NEWS0 = prev_json("news.json").get("d", {})
     uni = get_universe()
     syms = list(uni)
     attempted = 0
@@ -436,6 +473,26 @@ def main():
     spy.columns = spy.columns.get_level_values(0)
     spy3m = float(spy.Close.iloc[-1] / spy.Close.iloc[-64] - 1)
     bm_us = spy3m
+
+    # NAJPIERW (przed długim skanem rynku, żeby budżet czasu go nie ucinał): dane finansowe i newsy dla najważniejszych symboli
+    FUND, NEWS = FUND0, NEWS0
+    NAME.update({s: m.get("name", "") for s, m in uni.items()})
+    pre = list(dict.fromkeys([s for s, m in uni.items() if m.get("extra")] + list(uni)[:2300]))
+    fstat = {"try": 0, "ok": 0}
+    try:
+        need_f = [s for s in pre if time.time() - FUND.get(s, {}).get("ts", 0) > 7 * 86400][:FUND_N]
+        need_n = [s for s in pre if time.time() - NEWS.get(s, {}).get("ts", 0) > 3 * 3600][:NEWS_N]
+        with ThreadPoolExecutor(8) as ex:
+            for s, d in ex.map(fin, need_f):
+                fstat["try"] += 1
+                if d["m"] or d["y"]["rev"]:
+                    FUND.setdefault(s, {}).update(d)
+                    fstat["ok"] += 1
+            for s, items in ex.map(fetch_news, need_n):
+                NEWS[s] = {"ts": time.time(), "items": items}
+        print(f"Wstępnie: dane finansowe {fstat['ok']}/{fstat['try']}, newsy {len(need_n)}, {elapsed():.1f} min")
+    except Exception as e:
+        print("wstępne dane:", e)
 
     # etap 1: cały rynek (1 rok dziennych świec), tylko płynne spółki
     rows = []
@@ -476,7 +533,6 @@ def main():
             moods[mk], market_by[mk] = mood_of(sub)
 
     # etap 2: Reddit, newsy, analitycy, social, wyniki – dla najciekawszych spółek
-    FUND = FUND0
     NAME.update({r["symbol"]: r["name"] for r in rows})
     reddit = apewisdom()
     for r in rows:
@@ -530,17 +586,14 @@ def main():
 
     # dane finansowe (sprawozdania, wskaźniki, ETF) – uzupełniane stopniowo, ~70 symboli na skan, odświeżane co 7 dni
     try:
-        order = [r["symbol"] for r in sorted(rows, key=lambda r: (not r["extra"], not r["symbol"] in focus, not (r["index"] in CORE or r["n100"]), -(r["dvol"] or 0)))]
-        need = [s for s in order if time.time() - FUND.get(s, {}).get("ts", 0) > 7 * 86400][:70]
-        if elapsed() < 16 and need:
-            with ThreadPoolExecutor(6) as ex:
-                for s, d in ex.map(fin, need):
-                    if d["m"] or d["y"]["rev"]:
-                        FUND.setdefault(s, {}).update(d)
+        need = []
         keep = {r["symbol"] for r in rows}
         Path("docs").mkdir(exist_ok=True)
         Path("docs/fundamentals.json").write_text(json.dumps({"ts": time.time(), "d": {k: v for k, v in FUND.items() if k in keep}}, separators=(",", ":"), allow_nan=False))
-        print(f"Dane finansowe: {len(need)} odświeżonych, {len([k for k in FUND if k in keep])} łącznie")
+        for s_, it in news.items():
+            NEWS[s_] = {"ts": time.time(), "items": it}
+        Path("docs/news.json").write_text(json.dumps({"ts": time.time(), "d": {k: v for k, v in NEWS.items() if k in keep and time.time() - v["ts"] < 7 * 86400}}, separators=(",", ":"), allow_nan=False))
+        print(f"Dane finansowe: {fstat['ok']} pobranych teraz, {len([k for k in FUND if k in keep])} łącznie; newsy w pamięci: {len(NEWS)}")
     except Exception as e:
         print("fundamentals:", e)
 
@@ -550,6 +603,9 @@ def main():
             r["etf"] = m["qt"] == "ETF"
             r["index"] = "ETF" if r["etf"] else r["index"]
         r["cur"] = (m.get("cur") if r["extra"] else None) or r["cur"]
+
+    for r in rows:
+        r["lt"] = None if r["etf"] else long_term(r, FUND.get(r["symbol"]))
 
     # poprzedni wynik -> oznacz nowe rekomendacje kupna
     try:
@@ -598,7 +654,7 @@ def main():
     out = {"updated_at": time.time(), "indices": idx, "market": market, "market_by": market_by, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
            "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
            "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
-                    "news": len(news), "fund": len(FUND), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
+                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
            "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))

@@ -96,3 +96,18 @@ def test_eu_universe_and_rows():
 
 if __name__ == "__main__":
     test_eu_universe_and_rows(); print("ok eu")
+
+
+def test_long_term():
+    e = {"m": {"roe": 28, "om": 30, "pm": 24, "fcf": 120, "rev": 800, "revg": 15, "pe": 18, "fpe": 16, "evebitda": 11, "de": 40, "cr": 2.1, "dr": 2.0, "payout": 40, "target": 130, "eps": 5},
+         "y": {"rev": [["2022", 500], ["2023", 600], ["2024", 720], ["2025", 800]]}}
+    r = {"price": 100, "above200": True, "hi52_pct": -4}
+    lt = scan.long_term(r, e)
+    assert lt["s"] >= 75 and lt["l"] == "Silne" and lt["a"] == "Gromadź" and lt["cov"] == 100 and not lt["fl"]
+    bad = scan.long_term({"price": 10, "above200": False, "hi52_pct": -45}, {"m": {"roe": -5, "om": -3, "pm": -8, "fcf": -20, "rev": 100, "revg": -10, "pe": None, "de": 300, "cr": 0.7, "eps": -1}})
+    assert bad["s"] < 40 and bad["a"] == "Unikaj" and "ujemny free cash flow" in bad["fl"]
+    assert scan.long_term(r, {"m": {"pe": 20}}) is None and scan.long_term(r, None) is None   # za mało danych = brak oceny, nie zero
+
+
+if __name__ == "__main__":
+    test_long_term(); print("ok lt")

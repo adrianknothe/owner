@@ -43,3 +43,8 @@ Reguły są w sekrecie, bo repozytorium i strona są publiczne; stan wysłanych 
 
 ## Backtest techniczny
 `backtest.py` (workflow „Backtest techniczny”, co tydzień lub ręcznie) zapisuje `docs/backtest.json` do repozytorium. Tylko technika, z obciążeniem przeżywalnością – patrz zastrzeżenia w pliku.
+
+## Dane finansowe i newsy
+Przed długim skanem rynku skan odświeża rotacyjnie dane finansowe (do 120 symboli na skan, co 7 dni) i wiadomości (do 150 symboli, co 3 godziny).
+Wyniki trafiają do `fundamentals.json` i `news.json` (przenoszone między skanami przez GitHub Pages). W panelu „Status źródeł” widać, ile pobrano.
+Zakładka „Długi termin” ocenia spółki z dostępnych danych finansowych (patrz opis metody w aplikacji).
