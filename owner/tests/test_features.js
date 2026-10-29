@@ -41,4 +41,14 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
 // zakładka długoterminowa i wiadomości z pamięci
 (async()=>{D={results:[{symbol:'AAA',name:'Alfa',mkt:'US',sector:'IT',exch:'NASDAQ',etf:false,lt:{s:80,l:'Silne',a:'Gromadź',cov:90,p:{quality:90,growth:80,value:60,safety:70,income:null,trend:90},why:['ROE 28%'],fl:[]}},{symbol:'ETFX',etf:true,lt:null},{symbol:'BBB',name:'Beta',mkt:'DE',etf:false,lt:null}],news:{},market_news:[],indices:[]};NW={AAA:{ts:1,items:[{title:'X <b>',url:'javascript:alert(1)',src:'S',ts:1,sent:0}]}};
  drawLt();const nh=newsFor('AAA');assert(nh.includes('&lt;b&gt;')&&!nh.includes('javascript:alert')&&nh.includes('href="#"'));assert(newsFor('ZZZ').includes('Brak zapisanych'));console.log('FEATURES3 OK')})().catch(e=>{console.error('FAIL3',e);process.exit(1)});
+
+// procenty do celu, stan wejścia, nazwa metryki względnej
+(async()=>{const px={symbol:'P',name:'P',lv:3,vscore:1,conf:'wysoka',compl:90,flags:[],reasons:[],sma20:9,price:10,cur:'USD',etf:false,rs:8.04,rsi:50,adx:20,change_pct:1,week_pct:1,month_pct:1,vol_ratio:1,atr_pct:2,hi52_pct:-3,dvol:10,
+ plan:{setup:'Wybicie',quality:70,entry:10,stop:9.7,t1:10.45,t2:10.9,horizon:'3–10 sesji',atr_pct:2,state:'teraz',pull:null,zlo:9.9,zhi:10,up1:4.5,up2:9,dn:-3,rng10:6.3}};
+ assert(pp(8.04).includes('+8.0 p.p.')||pp(8.04).includes('+8,0 p.p.'));assert(action(px).includes('Wejście teraz')&&action(px).includes('+4,5%')||action(px).includes('+4.5%'));
+ const w={...px,plan:{...px.plan,state:'czekaj',pull:9.8,alt:{entry:9.8,stop:9.5,t1:10.25,t2:10.7,up1:4.6,up2:9.2}}};assert(action(w).includes('Poczekaj')&&action(w).includes('9.8'));
+ D={results:[px],news:{},market_news:[],indices:[]};NW={};const h=planHtml(px);assert(h.includes('Potencjał do celu')&&h.includes('wejście teraz')&&h.includes('Brak wystarczających danych historycznych'));assert(planHtml(w).includes('Lepsze wejście'));
+ BT={stats:{Wybicie:{all:{ev:100,t1:40,stop:30,amb:10}}}};assert(planHtml(px).includes('cel 1 przed stopem w 40%'));
+ assert(tr(px).includes('+4,5%')||tr(px).includes('+4.5%'));assert(tr(px).includes('p.p.'));assert(COLS.some(c=>c[1]=='Wynik vs rynek 3M')&&COLS.some(c=>c[0]=='up1'));
+ drawRec();drawScan();console.log('FEATURES4 OK')})().catch(e=>{console.error('FAIL4',e);process.exit(1)});
 `);

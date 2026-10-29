@@ -41,7 +41,7 @@ def replay(sym, df, bench):
             continue
         rs = float(rs3.iloc[t]) if rs3.iloc[t] == rs3.iloc[t] else 0.0
         p = plan(w, sig, rs)
-        if not p or t - last.get(p["setup"], -99) < DEDUPE:
+        if not p or p.get("state") != "teraz" or t - last.get(p["setup"], -99) < DEDUPE:
             continue
         last[p["setup"]] = t
         s = {"sym": sym, "setup": p["setup"], "ts": int(df.index[t].timestamp()), "s": p["stop"], "t1": p["t1"], "i": t}

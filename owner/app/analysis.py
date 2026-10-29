@@ -1,3 +1,4 @@
+import math
 import re
 import pandas as pd
 
@@ -77,9 +78,18 @@ def plan(df: pd.DataFrame, sig: dict, rs: float):
     q = 40 + 8 * sig["score"] + (15 if r.ADX > 25 else 8 if r.ADX > 20 else 0)
     q += max(-10, min(10, rs * 50)) + (8 if r.VOL_RATIO > 1.5 else 0) - (12 if r.RSI > 75 else 0)
     risk = 1.5 * atr
-    return {"setup": kind, "quality": int(max(0, min(100, q))), "entry": round(px, 2),
-            "stop": round(px - risk, 2), "t1": round(px + 1.5 * risk, 2), "t2": round(px + 3 * risk, 2),
-            "horizon": hor, "atr_pct": round(atr / px * 100, 2)}
+    ref = float(r.HH20) if kind == "Wybicie" else float(r.SMA20) if kind == "Trend" else None
+    wait = ref is not None and (px - ref) / atr > (1.0 if kind == "Wybicie" else 0.8)   # cena oddalona od poziomu wejścia
+    pull = round(ref + 0.3 * atr, 2) if wait else None
+    zlo, zhi = (round(ref, 2), pull) if wait else (round(max(ref, px - 0.5 * atr) if ref is not None else px - 0.3 * atr, 2), round(px, 2))
+    t1, t2 = px + 1.5 * risk, px + 3 * risk
+    out = {"setup": kind, "quality": int(max(0, min(100, q))), "entry": round(px, 2), "stop": round(px - risk, 2), "t1": round(t1, 2), "t2": round(t2, 2),
+           "horizon": hor, "atr_pct": round(atr / px * 100, 2), "state": "czekaj" if wait else "teraz", "pull": pull, "zlo": zlo, "zhi": zhi,
+           "up1": round((t1 / px - 1) * 100, 1), "up2": round((t2 / px - 1) * 100, 1), "dn": round((-risk / px) * 100, 1), "rng10": round(atr / px * 100 * math.sqrt(10), 1)}
+    if wait:
+        out["alt"] = {"entry": pull, "stop": round(pull - risk, 2), "t1": round(pull + 1.5 * risk, 2), "t2": round(pull + 3 * risk, 2),
+                      "up1": round((1.5 * risk / pull) * 100, 1), "up2": round((3 * risk / pull) * 100, 1)}
+    return out
 
 
 PHRASES = {

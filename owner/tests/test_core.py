@@ -111,3 +111,21 @@ def test_long_term():
 
 if __name__ == "__main__":
     test_long_term(); print("ok lt")
+
+
+def test_plan_percentages_and_state():
+    from app.analysis import extra, plan
+    d = extra(indicators(mk(2, 40)))
+    d.iloc[-1, d.columns.get_loc("ADX")] = 30; d.iloc[-1, d.columns.get_loc("VOL_RATIO")] = 2.0
+    atr = float(d.ATR.iloc[-1]); px = float(d.Close.iloc[-1])
+    d.iloc[-1, d.columns.get_loc("HH20")] = px - 2.0 * atr          # cena 2 ATR nad poziomem wybicia -> za późno na wejście teraz
+    p = plan(d, {"score": 2}, 0.0)
+    assert p["setup"] == "Wybicie" and p["state"] == "czekaj" and p["pull"] and p["alt"]["entry"] == p["pull"] and p["alt"]["stop"] < p["pull"]
+    assert abs(p["up1"] - 2.25 * p["atr_pct"]) < 0.15 and abs(p["up2"] - 4.5 * p["atr_pct"]) < 0.3 and p["dn"] < 0 and p["rng10"] > p["atr_pct"]
+    d.iloc[-1, d.columns.get_loc("HH20")] = px - 0.3 * atr
+    p2 = plan(d, {"score": 2}, 0.0)
+    assert p2["state"] == "teraz" and p2["zlo"] <= p2["zhi"] and "alt" not in p2
+
+
+if __name__ == "__main__":
+    test_plan_percentages_and_state(); print("ok plan%")

@@ -315,7 +315,7 @@ def archive(S, rows):
     recent = {(x["sym"], x["setup"]) for x in S if x["ts"] > cut}
     for r in rows:
         p = r["plan"]
-        if r["lv"] >= 3 and p and (r["symbol"], p["setup"]) not in recent:
+        if r["lv"] >= 3 and p and p.get("state") == "teraz" and (r["symbol"], p["setup"]) not in recent:
             S.append({"sym": r["symbol"], "ts": int(time.time()), "bd": r["bar"][0], "bar": r["bar"][1:], "setup": p["setup"], "px": r["price"], "lv": r["lv"],
                       "vs": r["vscore"], "cf": r["conf"], "cp": r.get("compl"), "comps": {k: v[0] for k, v in (r.get("comps") or {}).items()},
                       "e": p["entry"], "s": p["stop"], "t1": p["t1"], "t2": p["t2"]})
@@ -447,7 +447,7 @@ def long_term(r, e):
                        f"P/E {m['pe']:.0f}" if pe else None, f"cel analityków {up:+.0f}%" if up is not None else None, f"dywidenda {dy:.1f}%" if dy else None) if t]
     fl = [t for t in ("strata netto (brak sensownego P/E)" if (m.get("eps") or 0) < 0 else None, "ujemny free cash flow" if (m.get("fcf") or 0) < 0 else None, "spadek przychodów" if (m.get("revg") or 0) < 0 else None,
                       "wysokie zadłużenie" if (m.get("de") or 0) > 200 else None, "payout > 90%" if (m.get("payout") or 0) > 90 else None, "cena poniżej SMA200" if r.get("above200") is False else None) if t]
-    return {"s": s, "l": "Silne" if s >= 70 else "Dobre" if s >= 55 else "Przeciętne" if s >= 40 else "Słabe", "a": act, "cov": cov, "p": p, "why": why, "fl": fl}
+    return {"s": s, "l": "Silne" if s >= 70 else "Dobre" if s >= 55 else "Przeciętne" if s >= 40 else "Słabe", "a": act, "cov": cov, "p": p, "why": why, "fl": fl, "up": round(up, 1) if up is not None else None, "tg": m.get("target"), "an": m.get("analysts")}
 
 
 def main():
