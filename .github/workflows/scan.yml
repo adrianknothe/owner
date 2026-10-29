@@ -1,13 +1,14 @@
 name: Skan rynku
 on:
   schedule:
-    - cron: "*/20 13-21 * * 1-5"
+    - cron: "*/20 4-21 * * 1-5"
   workflow_dispatch:
 permissions: { contents: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
     defaults:
       run:
@@ -17,8 +18,18 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
-      - run: python scan.py
-      - uses: actions/upload-pages-artifact@v3
+      - id: cal
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=$(python scripts/market_open.py)" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.cal.outputs.run == 'true'
+        run: python scan.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTIFY_RULES: ${{ secrets.NOTIFY_RULES }}
+      - if: steps.cal.outputs.run == 'true'
+        uses: actions/upload-pages-artifact@v3
         with: { path: owner/docs }
-      - id: deploy
+      - if: steps.cal.outputs.run == 'true'
+        id: deploy
         uses: actions/deploy-pages@v4
