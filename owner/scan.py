@@ -1,7 +1,7 @@
 """Skan całego rynku akcji USA -> docs/results.json + docs/h/*.json (historia do wykresów).
 Źródła: Yahoo Finance (ceny, newsy, konsensus analityków), Google News RSS, ApeWisdom (Reddit),
 StockTwits, CNN Fear & Greed. Tylko informacyjnie – to nie jest porada inwestycyjna."""
-import json, math, os, re, time
+import hashlib, json, math, os, re, time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -15,6 +15,8 @@ from app.analysis import extra, indicators, plan, sentiment, signal
 from app.universe import UA, get_universe
 
 T0 = time.time()
+NAME = {}
+CORE = ("S&P 500", "NASDAQ-100", "DAX", "FTSE 100", "WIG20")  # w pierwszej kolejności: dane finansowe i historia 5-letnia
 CHUNK = 100
 ST_FAIL = [0]
 elapsed = lambda: (time.time() - T0) / 60
@@ -47,20 +49,22 @@ def write_hist(sym, df):
         {"t": [int(x.timestamp() // 86400) for x in df.index], "c": [n(x) for x in df.Close], "v": vol}, separators=(",", ":")))
 
 
-def row(sym, df, meta, spy3m):
+def row(sym, df, meta, spy3m, uf=1.0):
     df = extra(indicators(df))
     r, p = df.iloc[-1], df.iloc[-2]
     k = min(63, len(df) - 1)
     ret3m = float(r.Close / df.Close.iloc[-1 - k] - 1)
     sig = signal(df)
-    return {"symbol": sym, "name": meta.get("name", ""), "index": meta["index"], "n100": meta.get("n100", False), "etf": meta.get("etf", False), "extra": meta.get("extra", False), "exch": meta.get("exch", ""),
+    rel = None if spy3m is None else ret3m - spy3m  # benchmark regionalny (USA: SPY, DE: DAX, UK: FTSE 100, PL: WIG20)
+    cu = meta.get("cur") or "USD"
+    return {"mkt": meta.get("mkt", "US"), "cur": cu, "symbol": sym, "name": meta.get("name", ""), "index": meta["index"], "n100": meta.get("n100", False), "etf": meta.get("etf", False), "extra": meta.get("extra", False), "exch": meta.get("exch", ""),
             "sector": meta.get("sector", ""), "price": n(r.Close), "change_pct": n((r.Close / p.Close - 1) * 100),
             "week_pct": n((r.Close / df.Close.iloc[-6] - 1) * 100), "month_pct": n((r.Close / df.Close.iloc[-22] - 1) * 100),
             "rsi": n(r.RSI, 1), "adx": n(r.ADX, 1), "vol_ratio": n(r.VOL_RATIO), "avg_vol": int(df.Volume.tail(20).mean()),
-            "dvol": n((df.Close * df.Volume).tail(20).mean() / 1e6, 1), "atr_pct": n(r.ATR / r.Close * 100),
-            "rs": n((ret3m - spy3m) * 100, 1), "hi52_pct": n((r.Close / df.High.tail(252).max() - 1) * 100, 1),
+            "dvol": n((df.Close * df.Volume).tail(20).mean() / 1e6 * uf, 1), "atr_pct": n(r.ATR / r.Close * 100),
+            "rs": n(rel * 100, 1) if rel is not None else None, "hi52_pct": n((r.Close / df.High.tail(252).max() - 1) * 100, 1),
             "above50": bool(r.Close > r.SMA50), "above200": bool(r.Close > r.SMA200) if r.SMA200 == r.SMA200 else None,
-            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": plan(df, sig, ret3m - spy3m)}
+            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": plan(df, sig, rel or 0.0)}
 
 
 # ---------- źródła informacji ----------
@@ -97,7 +101,7 @@ def ynews(sym, k=6):
 
 def fetch_news(sym):
     items, seen = [], set()
-    for a in sorted(ynews(sym) + gnews(f"{sym} stock when:7d"), key=lambda a: -a["ts"]):
+    for a in sorted(ynews(sym) + gnews(f'"{NAME[sym]}" stock when:7d' if "." in sym and NAME.get(sym) else f"{sym} stock when:7d"), key=lambda a: -a["ts"]):
         key = re.sub(r"\W", "", a["title"].lower())[:40]
         if key and key not in seen and (not a["ts"] or time.time() - a["ts"] < 10 * 86400):
             seen.add(key)
@@ -277,7 +281,12 @@ def fx_rates():
     return out
 
 
-def eval_one(s, after, bench):
+def _vol(b):
+    v = getattr(b, "Volume", 0)
+    return int(v) if v == v else 0
+
+
+def eval_one(s, after, bench, keep=True):
     """Ocena sygnału na danych dziennych. Wejście: otwarcie NASTĘPNEJ sesji + poślizg (sygnał nie jest dostępny przed zamknięciem).
     Jeśli stop i cel mieszczą się w jednej świecy, kolejność jest nieznana -> 'amb' (nie zakładamy korzystnej)."""
     if len(after) < 1:
@@ -290,6 +299,8 @@ def eval_one(s, after, bench):
             if bn is not None and len(bn) >= k:
                 s[f"b{k}"] = round((float(bn.Close.iloc[k - 1]) / float(bn.Open.iloc[0]) - 1) * 100, 2)
     s["mfe"], s["mae"], s["n"] = round((float(after.High.max()) / entry - 1) * 100, 2), round((float(after.Low.min()) / entry - 1) * 100, 2), len(after)
+    if keep:
+        s["fb"] = [[round(float(b.Open), 2), round(float(b.High), 2), round(float(b.Low), 2), round(float(b.Close), 2), _vol(b)] for b in after.itertuples()]
     s["ex"] = None
     for _, b in after.iterrows():
         hs, ht = b.Low <= s["s"], b.High >= s["t1"]
@@ -324,26 +335,83 @@ def archive(S, rows):
     return S[-3000:]
 
 
+def summarize(g):
+    o = {"n": len(g), "from": min((x["ts"] for x in g), default=None), "to": max((x["ts"] for x in g), default=None)}
+    for k in (5, 10, 20):
+        h = [x for x in g if f"r{k}" in x]
+        o[f"n{k}"] = len(h)
+        if h:
+            o[f"w{k}"] = round(100 * sum(x[f"r{k}"] > 0 for x in h) / len(h))
+            o[f"a{k}"] = round(sum(x[f"r{k}"] for x in h) / len(h), 2)
+            hb = [x for x in h if f"b{k}" in x]
+            if hb:
+                o[f"x{k}"] = round(sum(x[f"r{k}"] - x[f"b{k}"] for x in hb) / len(hb), 2)
+    ev = [x for x in g if "ex" in x]
+    o.update(ev=len(ev), t1=sum(x["ex"] == "t1" for x in ev), stop=sum(x["ex"] == "stop" for x in ev), amb=sum(x["ex"] == "amb" for x in ev))
+    if ev:
+        o["mfe"], o["mae"] = round(sum(x["mfe"] for x in ev) / len(ev), 2), round(sum(x["mae"] for x in ev) / len(ev), 2)
+    return o
+
+
 def sig_stats(S):
-    out = {}
-    for st in SETUPS:
-        g = [x for x in S if x["setup"] == st]
-        o = {"n": len(g), "from": min((x["ts"] for x in g), default=None), "to": max((x["ts"] for x in g), default=None)}
-        for k in (5, 10, 20):
-            h = [x for x in g if f"r{k}" in x]
-            o[f"n{k}"] = len(h)
-            if h:
-                o[f"w{k}"] = round(100 * sum(x[f"r{k}"] > 0 for x in h) / len(h))
-                o[f"a{k}"] = round(sum(x[f"r{k}"] for x in h) / len(h), 2)
-                hb = [x for x in h if f"b{k}" in x]
-                if hb:
-                    o[f"x{k}"] = round(sum(x[f"r{k}"] - x[f"b{k}"] for x in hb) / len(hb), 2)
-        ev = [x for x in g if "ex" in x]
-        o.update(ev=len(ev), t1=sum(x["ex"] == "t1" for x in ev), stop=sum(x["ex"] == "stop" for x in ev), amb=sum(x["ex"] == "amb" for x in ev))
-        if ev:
-            o["mfe"], o["mae"] = round(sum(x["mfe"] for x in ev) / len(ev), 2), round(sum(x["mae"] for x in ev) / len(ev), 2)
-        out[st] = o
-    return out
+    return {st: summarize([x for x in S if x["setup"] == st]) for st in SETUPS}
+
+
+# ---------- powiadomienia poza aplikacją (Telegram) ----------
+def hid(k):
+    return hashlib.sha1(("owner:" + k).encode()).hexdigest()[:12]  # w publicznym pliku stanu nie ujawniamy symboli
+
+
+def parse_rules(txt):
+    """Reguły z sekretu NOTIFY_RULES, np.:  AAPL >= 200 | NVDA <= 120 | signal NVDA AAPL | earnings MSFT"""
+    rules = []
+    for line in (txt or "").splitlines():
+        t = line.split("#")[0].split()
+        try:
+            if t and t[0].lower() in ("signal", "earnings"):
+                rules += [(t[0].lower(), x.upper()) for x in t[1:]]
+            elif len(t) == 3 and t[1] in (">=", "<="):
+                rules.append(("price", t[0].upper(), t[1], float(t[2])))
+        except ValueError:
+            pass
+    return rules
+
+
+def eval_rules(rules, by_sym, state, now=None):
+    now = now or time.time()
+    st = {"fired": {k: v for k, v in (state.get("fired") or {}).items() if now - v < 30 * 86400}, "lv": dict(state.get("lv") or {})}
+    msgs = []
+    for r in rules:
+        x = by_sym.get(r[1])
+        if not x:
+            continue
+        if r[0] == "price":
+            cond = x["price"] >= r[3] if r[2] == ">=" else x["price"] <= r[3]
+            key = hid(f"p:{r[1]}{r[2]}{r[3]}")
+            if cond and key not in st["fired"]:
+                msgs.append(f"{r[1]}: cena {x['price']} {r[2]} {r[3]}"); st["fired"][key] = now
+            elif not cond:
+                st["fired"].pop(key, None)
+        elif r[0] == "signal":
+            key = hid("lv:" + r[1]); prev = st["lv"].get(key)
+            if prev is not None and prev < 3 <= x["lv"]:
+                msgs.append(f"{r[1]}: nowy sygnał kupna ({['Sprzedaj', 'Unikaj', 'Obserwuj', 'Kupno', 'Silne kupno'][x['lv']]})")
+            st["lv"][key] = x["lv"]
+        elif r[0] == "earnings" and x.get("earnings_days") is not None and 0 <= x["earnings_days"] <= 3:
+            key = hid(f"e:{r[1]}:{time.strftime('%Y-%m', time.gmtime(now))}")
+            if key not in st["fired"]:
+                msgs.append(f"{r[1]}: wyniki kwartalne za {x['earnings_days']} dni"); st["fired"][key] = now
+    return msgs, st
+
+
+def send_telegram(msgs):
+    tok, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+    if not (tok and chat):
+        return None
+    try:
+        return requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": chat, "text": "Owner:\n" + "\n".join(msgs)}, timeout=20).status_code == 200
+    except Exception:
+        return False
 
 
 def main():
@@ -352,9 +420,22 @@ def main():
     uni = get_universe()
     syms = list(uni)
     attempted = 0
+    fx = fx_rates()
+    usd = {c: v["r"] / fx["USD"]["r"] for c, v in fx.items() if v.get("r") and fx.get("USD", {}).get("r")}
+    usd["GBX"], usd["PLN"] = usd.get("GBP", 1.3) / 100, (1 / fx["USD"]["r"]) if fx.get("USD", {}).get("r") else 0.26
+    bm = {}
+    for mk, t in (("DE", "^GDAXI"), ("UK", "^FTSE"), ("PL", "WIG20.WA")):
+        try:
+            d0 = yf.download(t, period="1y", auto_adjust=True, progress=False)
+            d0.columns = d0.columns.get_level_values(0)
+            bm[mk] = float(d0.Close.iloc[-1] / d0.Close.iloc[-64] - 1)
+        except Exception:
+            bm[mk] = None  # brak benchmarku: siła względna nie jest liczona (nie podstawiamy S&P)
+    bm["US"] = None
     spy = yf.download("SPY", period="1y", auto_adjust=True, progress=False)
     spy.columns = spy.columns.get_level_values(0)
     spy3m = float(spy.Close.iloc[-1] / spy.Close.iloc[-64] - 1)
+    bm_us = spy3m
 
     # etap 1: cały rynek (1 rok dziennych świec), tylko płynne spółki
     rows = []
@@ -368,9 +449,12 @@ def main():
         for s in syms[i:i + CHUNK]:
             try:
                 df = data[s].dropna(subset=["Close"])
-                m, dv = uni[s], (df.Close * df.Volume).tail(20).mean()
-                if len(df) >= 70 and (m.get("extra") or (df.Close.iloc[-1] >= 1.5 and dv >= (3e6 if m.get("etf") else 1e6))):
-                    rows.append(row(s, df.copy(), uni[s], spy3m))
+                m, mk = uni[s], uni[s].get("mkt", "US")
+                uf = usd.get(m.get("cur") or "USD", 1.0)
+                dv = (df.Close * df.Volume).tail(20).mean() * uf
+                ok = m.get("extra") or (mk != "US" and dv >= 2e5) or (mk == "US" and df.Close.iloc[-1] >= 1.5 and dv >= (3e6 if m.get("etf") else 1e6))
+                if len(df) >= 70 and ok:
+                    rows.append(row(s, df.copy(), m, bm_us if mk == "US" else bm.get(mk), uf))
                     write_hist(s, df)
             except Exception:
                 pass
@@ -379,14 +463,21 @@ def main():
         raise SystemExit(f"Zbyt mało danych ({len(rows)}) – przerywam, żeby nie nadpisać strony")
     print(f"Etap 1: {len(rows)} płynnych spółek, {elapsed():.1f} min")
 
-    N = len(rows)
-    a50, buy, sell = sum(r["above50"] for r in rows) / N, sum(r["label"] == "kupno" for r in rows) / N, sum(r["label"] == "sprzedaż" for r in rows) / N
-    mood = ("Byczy", 0.5) if a50 >= .6 and buy > sell else ("Niedźwiedzi", -0.5) if a50 < .4 or sell > buy * 1.5 else ("Mieszany", 0.0)
-    market = {"name": mood[0], "a50": round(a50 * 100), "buy": round(buy * 100), "sell": round(sell * 100),
-              "adv": round(sum((r["change_pct"] or 0) > 0 for r in rows) / N * 100)}
+    def mood_of(rs_):
+        N = max(1, len(rs_))
+        a50, buy, sell = sum(r["above50"] for r in rs_) / N, sum(r["label"] == "kupno" for r in rs_) / N, sum(r["label"] == "sprzedaż" for r in rs_) / N
+        md = ("Byczy", 0.5) if a50 >= .6 and buy > sell else ("Niedźwiedzi", -0.5) if a50 < .4 or sell > buy * 1.5 else ("Mieszany", 0.0)
+        return md, {"name": md[0], "a50": round(a50 * 100), "buy": round(buy * 100), "sell": round(sell * 100), "adv": round(sum((r["change_pct"] or 0) > 0 for r in rs_) / N * 100), "n": len(rs_)}
+    mood, market = mood_of([r for r in rows if r["mkt"] == "US"] or rows)
+    moods, market_by = {"US": mood}, {"US": market}
+    for mk in ("DE", "UK", "PL"):
+        sub = [r for r in rows if r["mkt"] == mk]
+        if len(sub) >= 25:
+            moods[mk], market_by[mk] = mood_of(sub)
 
     # etap 2: Reddit, newsy, analitycy, social, wyniki – dla najciekawszych spółek
     FUND = FUND0
+    NAME.update({r["symbol"]: r["name"] for r in rows})
     reddit = apewisdom()
     for r in rows:
         r["reddit"] = reddit.get(r["symbol"])
@@ -418,11 +509,28 @@ def main():
         market_news = sorted(ynews("SPY", 5) + gnews("stock market Wall Street when:2d", 6) + gnews("Federal Reserve economy when:3d", 4), key=lambda a: -a["ts"])[:12]
         st_trend = [{"s": x["symbol"], "t": x.get("title", "")} for x in jget("https://api.stocktwits.com/api/2/trending/symbols.json").get("symbols", [])[:12]]
     for r in rows:
-        verdict(r, mood)
+        verdict(r, moods.get(r['mkt'], mood))
+
+    nt = {"configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")), "rules": 0, "msgs": 0, "sent": None}
+    try:
+        rules = parse_rules(os.getenv("NOTIFY_RULES", ""))
+        try:
+            st0 = prev_json("notified.json")
+        except Exception:
+            st0 = {}
+        msgs, st1 = eval_rules(rules, {r["symbol"]: r for r in rows}, st0)
+        sent = send_telegram(msgs) if msgs else None
+        if msgs and not sent:
+            st1 = st0  # nie oznaczaj jako wysłane – spróbujemy przy następnym skanie
+        Path("docs").mkdir(exist_ok=True)
+        Path("docs/notified.json").write_text(json.dumps(st1, separators=(",", ":")))
+        nt.update(rules=len(rules), msgs=len(msgs), sent=sent)
+    except Exception as e:
+        print("notify:", e)
 
     # dane finansowe (sprawozdania, wskaźniki, ETF) – uzupełniane stopniowo, ~70 symboli na skan, odświeżane co 7 dni
     try:
-        order = [r["symbol"] for r in sorted(rows, key=lambda r: (not r["extra"], not r["symbol"] in focus, not (r["index"] in ("S&P 500", "NASDAQ-100") or r["n100"]), -(r["dvol"] or 0)))]
+        order = [r["symbol"] for r in sorted(rows, key=lambda r: (not r["extra"], not r["symbol"] in focus, not (r["index"] in CORE or r["n100"]), -(r["dvol"] or 0)))]
         need = [s for s in order if time.time() - FUND.get(s, {}).get("ts", 0) > 7 * 86400][:70]
         if elapsed() < 16 and need:
             with ThreadPoolExecutor(6) as ex:
@@ -441,7 +549,7 @@ def main():
         if r["extra"] and m.get("qt"):
             r["etf"] = m["qt"] == "ETF"
             r["index"] = "ETF" if r["etf"] else r["index"]
-        r["cur"] = m.get("cur") if r["extra"] else "USD"
+        r["cur"] = (m.get("cur") if r["extra"] else None) or r["cur"]
 
     # poprzedni wynik -> oznacz nowe rekomendacje kupna
     try:
@@ -453,7 +561,7 @@ def main():
         pass
 
     # historia 5-letnia dla głównych spółek i okazji
-    big = [r["symbol"] for r in rows if r["index"] in ("S&P 500", "NASDAQ-100") or r["n100"] or r["plan"] or r["symbol"] in news]
+    big = [r["symbol"] for r in rows if r["index"] in CORE or r["n100"] or r["plan"] or r["symbol"] in news]
     for i in range(0, len(big), 50):
         if elapsed() > 17:
             break
@@ -466,7 +574,7 @@ def main():
 
     # indeksy
     idx = []
-    for s, name in [("^GSPC", "S&P 500 (US500)"), ("^NDX", "NASDAQ-100 (US100)"), ("^IXIC", "NASDAQ Composite"), ("^DJI", "Dow Jones (US30)"), ("^RUT", "Russell 2000"), ("^VIX", "VIX – zmienność")]:
+    for s, name in [("^GSPC", "S&P 500 (US500)"), ("^NDX", "NASDAQ-100 (US100)"), ("^IXIC", "NASDAQ Composite"), ("^DJI", "Dow Jones (US30)"), ("^RUT", "Russell 2000"), ("^GDAXI", "DAX (Niemcy)"), ("^FTSE", "FTSE 100 (UK)"), ("WIG20.WA", "WIG20 (Polska)"), ("^VIX", "VIX – zmienność")]:
         try:
             d = yf.download(s, period="5y", auto_adjust=True, progress=False)
             d.columns = d.columns.get_level_values(0)
@@ -485,13 +593,12 @@ def main():
         r.pop("bar", None)
     Path("docs").mkdir(exist_ok=True)
     Path("docs/signals.json").write_text(json.dumps({"updated": time.time(), "cost_pct": COST * 100, "signals": signals, "stats": sig_stats(signals)}, separators=(",", ":"), allow_nan=False))
-    fx = fx_rates()
     fng = jget("https://production.dataviz.cnn.io/index/fearandgreed/graphdata").get("fear_and_greed", {})
     top_reddit = [{"s": k, **v} for k, v in sorted(reddit.items(), key=lambda kv: kv[1]["rank"])[:12]]
-    out = {"updated_at": time.time(), "indices": idx, "market": market, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
+    out = {"updated_at": time.time(), "indices": idx, "market": market, "market_by": market_by, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
            "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
            "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
-                    "news": len(news), "fund": len(FUND), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
+                    "news": len(news), "fund": len(FUND), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
            "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))

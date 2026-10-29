@@ -21,6 +21,15 @@ VEA VWO EFA EEM IEMG IXUS VXUS VGK EWJ EWZ EWW FXI MCHI KWEB INDA EWY EWT EWG AC
 SCHD VYM DVY VIG DGRO NOBL HDV SDY JEPI JEPQ QYLD XYLD DIVO SPYD FDVV SCHY VNQ VNQI IYR
 ARKK ARKW ARKG TQQQ SQQQ SOXL SOXS UPRO SPXL SPXS TNA TZA UVXY VXX SVXY BITO IBIT FBTC ETHA GBTC BLOK
 MTUM QUAL USMV VLUE SIZE MOAT COWZ CALF RPV VBR IWN IWO""".split()
+EU = [("DAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/DAX"), ("MDAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/MDAX"),
+      ("SDAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/SDAX"), ("FTSE 100", "UK", ".L", "LSE", "GBX", "https://en.wikipedia.org/wiki/FTSE_100_Index"),
+      ("FTSE 250", "UK", ".L", "LSE", "GBX", "https://en.wikipedia.org/wiki/FTSE_250_Index"), ("WIG20", "PL", ".WA", "GPW", "PLN", "https://en.wikipedia.org/wiki/WIG20"),
+      ("mWIG40", "PL", ".WA", "GPW", "PLN", "https://pl.wikipedia.org/wiki/MWIG40"), ("sWIG80", "PL", ".WA", "GPW", "PLN", "https://pl.wikipedia.org/wiki/SWIG80")]
+# Zapasowe listy (gdy Wikipedia nie odpowiada lub zmieni układ tabel). Symbole bez danych w Yahoo są po prostu pomijane przy skanie.
+SEEDS = {"DAX": "ADS AIR ALV BAS BAYN BEI BMW BNR CBK CON 1COV DTG DBK DB1 DHL DTE EOAN FRE FME HNR1 HEI HEN3 IFX MBG MRK MTX MUV2 P911 PAH3 QIA RHM RWE SAP SRT3 SIE ENR SHL SY1 VOW3 VNA ZAL".split(),
+         "FTSE 100": "AZN SHEL HSBA ULVR BP RIO GSK DGE BATS LSEG REL NG BARC LLOY VOD GLEN AAL CPG RKT TSCO NWG STAN PRU AV LGEN BA RR IMB EXPN CRH ANTO III SSE BT-A WPP".split(),
+         "WIG20": "PKN PKO PZU KGH PEO DNP LPP CDR ALE PGE OPL SPL KRU CPS ALR MBK JSW KTY TPE PCO".split(),
+         "mWIG40": "ACP APR ASB BDX CAR CCC CIE CMR DOM ENA EUR GPW ING MIL NEU TXT VRC XTB 11B".split()}
 _cache = {"t": 0, "data": {}}
 
 
@@ -32,6 +41,48 @@ def _wiki(url, col):
             name = t["Security"] if "Security" in t.columns else t["Company"] if "Company" in t.columns else [""] * len(t)
             return list(zip(t[col].astype(str), sec, name))
     raise ValueError("brak tabeli")
+
+
+SYM_COLS = ("ticker", "symbol", "epic", "ticker symbol", "kod", "skrót", "symbol giełdowy", "tidm")
+NAME_COLS = ("company", "name", "spółka", "nazwa", "security", "constituent")
+
+
+def parse_eu_html(html, suffix):
+    """Tolerancyjny parser tabeli składu indeksu: szuka kolumny z tickerem i nazwą, zwraca [(symbol_yahoo, nazwa, sektor)]."""
+    best = []
+    for t in pd.read_html(io.StringIO(html)):
+        cols = {str(c).strip().lower(): c for c in t.columns}
+        sc = next((cols[c] for c in SYM_COLS if c in cols), None)
+        if sc is None:
+            continue
+        nc = next((cols[c] for c in NAME_COLS if c in cols), None)
+        sec = next((c for k, c in cols.items() if any(w in k for w in ("sector", "industry", "branża", "sektor"))), None)
+        out = []
+        for _, r in t.iterrows():
+            s = str(r[sc]).strip().upper().rstrip(".")
+            s = s[:-len(suffix)] if s.endswith(suffix) else s
+            s = s.replace(".", "-").replace(" ", "")
+            if re.fullmatch(r"[A-Z0-9]{1,6}(-[A-Z0-9]{1,2})?", s):
+                out.append((s + suffix, str(r[nc])[:40] if nc is not None else "", str(r[sec]) if sec is not None and r[sec] == r[sec] else ""))
+        if len(out) > len(best):
+            best = out
+    return best if len(best) >= 15 else []
+
+
+def _eu():
+    out = {}
+    for label, mkt, suf, exch, cur, url in EU:
+        got = []
+        try:
+            got = parse_eu_html(requests.get(url, headers=UA, timeout=30).text, suf)
+        except Exception as e:
+            print(f"[universe] {label}: {e}")
+        for s in SEEDS.get(label, []):
+            if not any(g[0] == s + suf for g in got):
+                got.append((s + suf, "", ""))
+        for s, name, sec in got:
+            out.setdefault(s, {"index": label, "n100": False, "etf": False, "sector": sec, "name": name, "exch": exch, "mkt": mkt, "cur": cur})
+    return out
 
 
 def _trader():
@@ -71,7 +122,15 @@ def get_universe() -> dict:
             print(f"[universe] {label}: {e}")
     try:
         tr = _trader()
-        for s in POPULAR_ETF + list(tr):
+        eu = {}
+        try:
+            eu = _eu()
+        except Exception as e:
+            print(f"[universe] EU: {e}")
+        for s in POPULAR_ETF + list(eu) + list(tr):
+            if s in eu:
+                out.setdefault(s, eu[s])
+                continue
             m = tr.get(s)
             if not m:
                 continue

@@ -1,0 +1,8 @@
+/* ---------- panel boczny i status ---------- */
+function drawCtx(){$('#cw').innerHTML=wl.map(by).filter(Boolean).slice(0,8).map(x=>`<div class="li" data-s="${esc(x.symbol)}"><b>${esc(x.symbol)}</b><span class="num">${nf(x.price,2)}</span>${pc(x.change_pct)}</div>`).join('')||'<span class="mute">Dodaj spółki gwiazdką ★.</span>';
+ $('#cn').innerHTML=nl((D.market_news||[]).slice(0,4));const ev=D.results.filter(x=>x.earnings_days!=null).sort((a,b)=>a.earnings_days-b.earnings_days).slice(0,8);
+ $('#ce').innerHTML=ev.map(x=>`<div class="li" data-s="${esc(x.symbol)}"><b>${esc(x.symbol)}</b><span class="mute">za ${x.earnings_days} dni</span></div>`).join('')||'<span class="mute">Brak wyników w ciągu 10 dni wśród analizowanych spółek.</span>';
+ const d=D.diag;$('#cs').innerHTML=d?`Uniwersum ${d.universe} · próbowano ${d.attempted} · przetworzono ${d.processed} · pominięto ${d.skipped}${d.cut?' <span class="warn">(skan skrócony budżetem czasu)</span>':''}<br>`+[['Newsy',d.news>0],['Reddit',d.reddit>0],['StockTwits',d.stocktwits],['Kursy FX',d.fx],['Fear & Greed',d.fng],['Telegram',d.notify&&d.notify.configured]].map(a=>`<span class="${a[1]?'up':'warn'}">${a[1]?'●':'○'}</span> ${a[0]}`).join(' · ')+`<br>Czas skanu: ${d.minutes} min`:'';
+ $$('#ctx .li[data-s]').forEach(e=>e.onclick=()=>open_(e.dataset.s))}
+function setMeta(j){const age=Math.round((Date.now()/1e3-j.updated_at)/60),st=age>90;$('#meta').className='chip'+(st?' stale':'');$('#meta').innerHTML=`<span class="live${st?' stale':''}"></span>Dane Yahoo opóźnione ~15 min · skan <b>${new Date(j.updated_at*1000).toLocaleString('pl-PL',{dateStyle:'short',timeStyle:'short'})}</b> (${age} min temu)${st?' – nieaktualne (poza sesją lub awaria skanu)':''}`}
+PF=migrate(PF);

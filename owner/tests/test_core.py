@@ -50,3 +50,49 @@ if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):
             v(); print("ok", k)
+
+
+def test_notify_rules():
+    rules = scan.parse_rules("AAPL >= 200  # cena\nNVDA <= 100\nsignal NVDA TSLA\nearnings MSFT\nzły wiersz\nX >= abc")
+    assert len(rules) == 5
+    rows = {"AAPL": {"price": 205, "lv": 2, "earnings_days": None}, "NVDA": {"price": 120, "lv": 2, "earnings_days": None}, "TSLA": {"price": 1, "lv": 3, "earnings_days": None}, "MSFT": {"price": 1, "lv": 2, "earnings_days": 2}}
+    m1, s1 = scan.eval_rules(rules, rows, {}, now=1e9)
+    assert any("AAPL" in m for m in m1) and any("MSFT" in m for m in m1) and not any("nowy sygnał" in m for m in m1)  # pierwszy odczyt sygnału: tylko zapamiętaj
+    m2, s2 = scan.eval_rules(rules, rows, s1, now=1e9 + 60)
+    assert m2 == []  # brak duplikatów
+    rows["AAPL"]["price"] = 190; _, s3 = scan.eval_rules(rules, rows, s2, now=1e9 + 120)   # warunek ustąpił -> reguła uzbrojona
+    rows["AAPL"]["price"] = 210; rows["NVDA"]["lv"] = 3
+    m4, _ = scan.eval_rules(rules, rows, s3, now=1e9 + 180)
+    assert any("AAPL" in m for m in m4) and any("NVDA: nowy sygnał" in m for m in m4)
+    assert "AAPL" not in str(s1)  # stan nie ujawnia symboli
+
+
+def test_forward_bars_and_summary():
+    idx = pd.date_range("2026-01-05", periods=25)
+    after = pd.DataFrame({"Open": 100.0, "High": 101.0, "Low": 99.0, "Close": [100 + i * .2 for i in range(25)], "Volume": 1000}, index=idx).head(20)
+    s = {"s": 90.0, "t1": 130.0, "ts": 1}; scan.eval_one(s, after, after)
+    assert len(s["fb"]) == 20 and "r20" in s and "b20" in s
+    o = scan.summarize([s]); assert o["n20"] == 1 and o["ev"] == 1
+
+
+if __name__ == "__main__":
+    test_notify_rules(); test_forward_bars_and_summary(); print("ok extra")
+
+
+def test_eu_universe_and_rows():
+    import io
+    from app.universe import parse_eu_html
+    dax = "<table><tr><th>Company</th><th>Ticker</th><th>Sector</th></tr>" + "".join(f"<tr><td>Firma {i}</td><td>AB{i}</td><td>Industrials</td></tr>" for i in range(20)) + "</table>"
+    assert parse_eu_html(dax, ".DE")[0][0] == "AB0.DE" and len(parse_eu_html(dax, ".DE")) == 20
+    ftse = "<table><tr><th>Company</th><th>EPIC</th></tr><tr><td>BT</td><td>BT.A</td></tr><tr><td>Rolls</td><td>RR.</td></tr>" + "".join(f"<tr><td>X{i}</td><td>X{i}</td></tr>" for i in range(18)) + "</table>"
+    syms = [x[0] for x in parse_eu_html(ftse, ".L")]
+    assert "BT-A.L" in syms and "RR.L" in syms
+    assert parse_eu_html("<table><tr><th>Ticker</th></tr><tr><td>A</td></tr></table>", ".DE") == []   # za krótka tabela = odrzucona (użyj zapasowej listy)
+    r = scan.row("SAP.DE", mk(), {"index": "DAX", "mkt": "DE", "cur": "EUR", "exch": "XETRA"}, None, uf=1.08)
+    assert r["mkt"] == "DE" and r["cur"] == "EUR" and r["rs"] is None   # brak benchmarku => brak siły względnej, nie podstawiamy S&P
+    r2 = scan.row("X", mk(), {"index": "S&P 500"}, 0.05); assert r2["cur"] == "USD" and r2["mkt"] == "US" and r2["rs"] is not None
+    assert abs(scan.row("X", mk(), {"index": "S&P 500"}, 0.05, uf=1.0)["dvol"] * 2 - scan.row("X", mk(), {"index": "S&P 500"}, 0.05, uf=2.0)["dvol"]) < 0.2
+
+
+if __name__ == "__main__":
+    test_eu_universe_and_rows(); print("ok eu")

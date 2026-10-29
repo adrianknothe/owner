@@ -24,3 +24,22 @@ Nie jest to porada inwestycyjna.
 ## Pliki generowane przy skanie (GitHub Pages)
 `results.json`, `fundamentals.json`, `signals.json` (archiwum sygnałów), `h/*.json` (historia cen). Archiwa są pobierane z poprzedniego
 wdrożenia; błąd sieci przy ich pobraniu przerywa skan, żeby nie nadpisać danych.
+
+## Struktura frontendu
+`docs/index.html` (szkielet), `docs/style.css`, `docs/js/00-core.js … 09-start.js` – klasyczne skrypty ładowane po kolei (wspólny zakres globalny).
+Testy: `python tests/test_core.py`, `python tests/test_calendar.py`, `node tests/test_portfolio.js`, `node tests/test_features.js` (wymagają `npm i xlsx`).
+
+## Harmonogram
+Workflow wywołuje `scripts/market_open.py` (kalendarz NYSE: święta, skrócone sesje, zmiana czasu) i pomija skan poza sesją.
+Ręczne uruchomienie (Run workflow) zawsze skanuje.
+
+## Rynki
+USA (całość, w tym ETF), Niemcy (DAX, MDAX, SDAX), Wielka Brytania (FTSE 100, FTSE 250), Polska (WIG20, mWIG40, sWIG80). Składy z Wikipedii z zapasowymi listami w `app/universe.py`.
+Siła względna jest liczona wobec indeksu danego rynku (SPY, DAX, FTSE 100, WIG20); gdy benchmarku brak, pole jest puste. Ceny z Londynu są w pensach (GBX). Obrót jest przeliczany na USD kursami dziennymi.
+
+## Powiadomienia (Telegram) – opcjonalne
+Sekrety repozytorium: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `NOTIFY_RULES` (wiersze np. `AAPL >= 200`, `NVDA <= 120`, `signal NVDA AAPL`, `earnings MSFT`).
+Reguły są w sekrecie, bo repozytorium i strona są publiczne; stan wysłanych alertów zapisuje tylko skróty (`docs/notified.json`).
+
+## Backtest techniczny
+`backtest.py` (workflow „Backtest techniczny”, co tydzień lub ręcznie) zapisuje `docs/backtest.json` do repozytorium. Tylko technika, z obciążeniem przeżywalnością – patrz zastrzeżenia w pliku.
