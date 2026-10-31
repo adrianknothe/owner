@@ -10,6 +10,15 @@ def mk(n=700, seed=3):
 
 
 def test_no_lookahead():
+    orig = backtest.tech_buy
+    backtest.tech_buy = lambda w, sig, rel=None: True            # badamy przyczynowość potoku, nie ostrość bramki
+    try:
+        _no_lookahead()
+    finally:
+        backtest.tech_buy = orig
+
+
+def _no_lookahead():
     df = mk(); full = backtest.replay("X", df, df)
     cut = 600
     part = backtest.replay("X", df.iloc[:cut], df.iloc[:cut])
@@ -21,10 +30,25 @@ def test_no_lookahead():
     assert a == f
 
 
+def test_gate_rejects_weak_confirmations():
+    from app.analysis import extra, indicators, signal
+    d = extra(indicators(mk()))
+    sig = {"score": 1}
+    d2 = d.copy(); d2.iloc[-1, d2.columns.get_loc("Close")] = float(d2.SMA200.iloc[-1]) * 1.01
+    assert backtest.tech_buy(d2, {"score": 3}, 0.1) in (True, False)           # nie rzuca wyjątków
+    assert backtest.tech_buy(d2, sig, -0.2) is False                            # słaby sygnał bez potwierdzeń odpada
+
+
 def test_entry_next_open_with_costs():
-    df = mk(); sg = backtest.replay("X", df, df)
-    assert sg and all("n" in x for x in sg)
+    orig = backtest.tech_buy
+    backtest.tech_buy = lambda w, sig, rel=None: True
+    try:
+        df = mk(); sg = backtest.replay("X", df, df)
+    finally:
+        backtest.tech_buy = orig
+    assert sg and all("n" in x and "pt" in x for x in sg)
+    assert all(x["pt"] is None or 0 <= x["pt"] <= 100 for x in sg)
 
 
 if __name__ == "__main__":
-    test_no_lookahead(); test_entry_next_open_with_costs(); print("ok backtest")
+    test_no_lookahead(); test_gate_rejects_weak_confirmations(); test_entry_next_open_with_costs(); print("ok backtest")

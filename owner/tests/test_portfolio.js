@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path'),assert=require('assert');global.XLSX
 const el=()=>new Proxy(function(){},{get:(t,k)=>k=='classList'?{toggle(){},add(){},remove(){},contains:()=>false}:k=='style'?{}:k=='dataset'?{}:k=='open'?false:k=='value'?'':k=='checked'?false:k=='files'?[]:k=='length'?0:el(),set:()=>true,apply:()=>el()});
 const store={};global.document={querySelector:()=>el(),querySelectorAll:()=>[],documentElement:{},addEventListener(){},createElement:()=>el()};global.getComputedStyle=()=>({getPropertyValue:()=>'#000'});
 global.localStorage={getItem:k=>store[k]??null,setItem(k,v){store[k]=v},removeItem(k){delete store[k]}};global.window={};global.Chart=function(){this.destroy=()=>{}};global.fetch=async()=>({json:async()=>({})});global.setInterval=()=>{};global.URL={createObjectURL:()=>''};global.Blob=function(){};global.confirm=()=>true;global.alert=console.log;global.scrollTo=()=>{};
-const js=require('./load')();global.addEventListener=()=>{};
+const js=require('./load')();global.addEventListener=()=>{};global.innerWidth=1200;
 const book=rows=>{const wb=XLSX.utils.book_new();for(const [n,a] of Object.entries(rows))XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a),n);const b=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});return{name:'x.xlsx',lastModified:0,arrayBuffer:async()=>b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)}};
 eval(js+`
 const near=(a,b,e=0.01)=>assert(Math.abs(a-b)<e,a+' != '+b);

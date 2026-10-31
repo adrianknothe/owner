@@ -1,7 +1,7 @@
 // node tests/test_features.js  (wymaga: npm i xlsx) – porównywarka, ryzyko portfela, zmiany/alerty, tryb inwestora, RSI vs backend
 const fs=require('fs'),path=require('path'),assert=require('assert');global.XLSX=require('xlsx');
 const el=()=>new Proxy(function(){},{get:(t,k)=>k=='classList'?{toggle(){},add(){},remove(){},contains:()=>false}:k=='style'?{}:k=='dataset'?{}:k=='open'?false:k=='value'?'':k=='checked'?false:k=='files'?[]:k=='length'?0:el(),set:()=>true,apply:()=>el()});
-const store={};global.document={querySelector:()=>el(),querySelectorAll:()=>[],documentElement:{},addEventListener(){},createElement:()=>el(),hidden:false};global.addEventListener=()=>{};global.getComputedStyle=()=>({getPropertyValue:()=>'#000'});
+const store={};global.document={querySelector:()=>el(),querySelectorAll:()=>[],documentElement:{},addEventListener(){},createElement:()=>el(),hidden:false};global.addEventListener=()=>{};global.innerWidth=1200;global.getComputedStyle=()=>({getPropertyValue:()=>'#000'});
 global.localStorage={getItem:k=>store[k]??null,setItem(k,v){store[k]=v},removeItem(k){delete store[k]}};global.window={};global.Chart=function(){this.destroy=()=>{}};global.fetch=async u=>({json:async()=>({})});global.setInterval=()=>{};global.URL={createObjectURL:()=>''};global.Blob=function(){};global.confirm=()=>true;global.alert=console.log;global.scrollTo=()=>{};
 const js=require('./load')(),fx=JSON.parse(fs.readFileSync(path.join(__dirname,'rsi_fixture.json'),'utf8'));global.FIX=fx;
 eval(js+`
@@ -51,4 +51,17 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
  BT={stats:{Wybicie:{all:{ev:100,t1:40,stop:30,amb:10}}}};assert(planHtml(px).includes('cel 1 przed stopem w 40%'));
  assert(tr(px).includes('+4,5%')||tr(px).includes('+4.5%'));assert(tr(px).includes('p.p.'));assert(COLS.some(c=>c[1]=='Wynik vs rynek 3M')&&COLS.some(c=>c[0]=='up1'));
  drawRec();drawScan();console.log('FEATURES4 OK')})().catch(e=>{console.error('FAIL4',e);process.exit(1)});
+
+// zaawansowany wykres, czytanie wykresu, scenariusze Monte Carlo
+(async()=>{const n=300,c=[],o=[],hh=[],ll=[],v=[],t=[];let p=100;for(let i=0;i<n;i++){const d=Math.sin(i/9)*2+0.15;o.push(p);p=p+d;c.push(+p.toFixed(2));hh.push(+(Math.max(o[i],p)+1).toFixed(2));ll.push(+(Math.min(o[i],p)-1).toFixed(2));v.push(1000+i);t.push(20000+i)}
+ H={t,c,o,h:hh,l:ll,v};const Lv=levels(H);assert(Lv.up.every(z=>z.p>Lv.last)&&Lv.dn.every(z=>z.p<Lv.last)&&Lv.up.length<=3);
+ const R=readChart(H,null);assert(R.some(r=>r.startsWith('Trend'))&&R.some(r=>r.includes('RSI'))&&R.some(r=>r.includes('MACD'))&&R.some(r=>r.includes('Bollinger')));assert(readChart({c:[1,2,3],t:[1,2,3],v:[1,1,1]},null)[0].includes('Za mało'));
+ D={results:[],indices:[],news:{},market_news:[]};cur='AAA';RN=252;CT='candle';drawChart();CT='line';tgl.macd=1;tgl.bb=1;tgl.fib=1;drawChart();RN=-1;drawChart();
+ const mc={H:10,sc:{neutral:{pt:38,ps:50,pa:3,pn:9,pu:49,er:-0.1,q:[-8,-3,0,3,8],mu:0},trend:{pt:50,ps:38,pa:3,pn:9,pu:60,er:0.2,q:[-6,-1,2,5,10],mu:0.2},reversal:{pt:25,ps:62,pa:3,pn:10,pu:35,er:-0.4,q:[-10,-5,-2,1,6],mu:-0.2}},fan:[[.95,.94,.93,.93,.92,.92,.91,.91,.9,.9],[.98,.98,.97,.97,.97,.96,.96,.96,.96,.95],[1,1,1,1,1,1,1,1,1,1],[1.02,1.03,1.03,1.04,1.04,1.05,1.05,1.05,1.06,1.06],[1.05,1.06,1.07,1.08,1.09,1.1,1.1,1.11,1.12,1.12]]};
+ const X={symbol:'AAA',price:100,plan:{entry:100,stop:96,t1:106,t2:112},mc,mcl:{pu:55,p20:12,q:[-30,-10,5,20,45]},cf:[4,6,[['cena powyżej SMA200',true],['RSI poniżej 75',false]]],exch:'NASDAQ',cur:'USD'};
+ D.results=[X];const sh=scenHtml(X);assert(sh.includes('Monte Carlo')&&sh.includes('Neutralny')&&sh.includes('Kalibracja modelu: brak')&&sh.includes('12 miesięcy')&&sh.includes('nie prognoza'));
+ BT={calib:[{pred:38,real:35,n:120}]};assert(scenHtml(X).includes('przewidziane 38% → zrealizowane 35%'));BT=null;
+ assert(scenHtml({symbol:'Z'}).includes('Brak symulacji'));drawScen();FD={AAA:{ts:1,m:{target:120,tlow:90,thigh:140,rec:'buy',analysts:12,gm:40,om:20,fcf:2e9}}};
+ assert(consHtml('AAA').includes('+20,0%')||consHtml('AAA').includes('+20.0%'));assert(ratiosHtml('AAA').includes('Marża brutto'));assert(consHtml('ZZZ').includes('Brak danych'));
+ fillInst('AAA');fillFd('AAA');console.log('FEATURES5 OK')})().catch(e=>{console.error('FAIL5',e);process.exit(1)});
 `);

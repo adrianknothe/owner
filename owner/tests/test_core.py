@@ -129,3 +129,32 @@ def test_plan_percentages_and_state():
 
 if __name__ == "__main__":
     test_plan_percentages_and_state(); print("ok plan%")
+
+
+def test_confirmations_and_mc():
+    import numpy as np
+    from app.analysis import confirmations, extra, mc_long, mc_paths, mc_scenarios, mc_trade, plan
+    d = extra(indicators(mk(2, 40)))
+    ok, av, items = confirmations(d, 0.05)
+    assert 0 <= ok <= av == len(items) >= 5
+    p = {"entry": float(d.Close.iloc[-1]), "stop": float(d.Close.iloc[-1]) * 0.96, "t1": float(d.Close.iloc[-1]) * 1.06, "t2": float(d.Close.iloc[-1]) * 1.12}
+    m = mc_trade(d, p, 10, 3000, 0.0, 1, fan=True)
+    assert abs(m["pt"] + m["ps"] + m["pa"] + m["pn"] - 100) <= 2                      # rozłączne wyniki sumują się do 100%
+    assert m["q"] == sorted(m["q"]) and all(m["fan"][i][-1] <= m["fan"][i + 1][-1] for i in range(4))
+    assert m == mc_trade(d, p, 10, 3000, 0.0, 1, fan=True)                           # powtarzalność (ziarno)
+    up = mc_trade(d, p, 10, 3000, 0.004, 1); dn = mc_trade(d, p, 10, 3000, -0.004, 1)
+    assert up["pt"] > m["pt"] > dn["pt"] and up["er"] > dn["er"]                      # dryf zmienia wynik w oczekiwanym kierunku
+    wide = dict(p, stop=p["entry"] * 0.9, t1=p["entry"] * 1.1)
+    assert mc_trade(d, wide, 10, 2000, 0.0, 1)["pn"] > m["pn"]                       # szersze poziomy => częściej "żadne"
+    sc = mc_scenarios(d, p, 3)
+    assert set(sc["sc"]) == {"neutral", "trend", "reversal"} and len(sc["fan"]) == 5 and sc["sc"]["trend"]["mu"] > 0 > sc["sc"]["reversal"]["mu"]
+    l = mc_long(d, seed=1); assert l["q"] == sorted(l["q"]) and 0 <= l["pu"] <= 100
+    assert mc_paths(d.head(30), 10, 100) is None and mc_scenarios(d, None) is None   # brak danych/planu = brak symulacji
+    flat = d.copy(); flat.iloc[-1, flat.columns.get_loc("Close")] = flat.Close.iloc[-1]
+    # bramka niepewnych sygnałów: dobre newsy/analitycy nie przebiją braku potwierdzeń technicznych
+    r = scan.row("X", mk(2, 40), {"index": "S&P 500"}, 0.05); r.update(cf=[1, 6, []], score=3, news_n=3, news_sent=4.0, st=None, fund=None, reddit=None, earnings_days=None, above200=True)
+    scan.verdict(r, ("Byczy", 0.5)); assert r["lv"] <= 2 and any("potwierdzeń" in f for f in r["flags"])
+
+
+if __name__ == "__main__":
+    test_confirmations_and_mc(); print("ok mc")

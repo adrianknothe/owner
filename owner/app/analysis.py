@@ -1,4 +1,6 @@
 import math
+
+import numpy as np
 import re
 import pandas as pd
 
@@ -109,3 +111,89 @@ def sentiment(title: str) -> int:
     """Ocena tytułu -3..+3 na podstawie słownika fraz finansowych (orientacyjna)."""
     t = title.lower()
     return max(-3, min(3, sum(v for k, v in PHRASES.items() if re.search(r"\b" + re.escape(k), t))))
+
+
+def confirmations(df, rel=None):
+    """Niezależne potwierdzenia techniczne (przyczynowe – tylko dane do ostatniej świecy). Zwraca (spełnione, dostępne, [(opis, bool)])."""
+    r, items, atr = df.iloc[-1], [], float(df.ATR.iloc[-1])
+    if r.SMA200 == r.SMA200:
+        items.append(("cena powyżej SMA200", bool(r.Close > r.SMA200)))
+    if len(df) > 72 and df.SMA50.iloc[-21] == df.SMA50.iloc[-21]:
+        items.append(("SMA50 rośnie (20 sesji)", bool(r.SMA50 > df.SMA50.iloc[-21])))
+    v, d = df.Volume.tail(10), df.Close.diff().tail(10)
+    items.append(("wolumen potwierdza (więcej na wzrostach)", bool(v[d > 0].sum() > v[d < 0].sum())))
+    if rel is not None:
+        items.append(("silniejsza od rynku (3M)", bool(rel > 0)))
+    hh = float(df.High.tail(60).max())
+    items.append(("jest miejsce do oporu (≥1,5 ATR lub wybicie)", bool(hh - r.Close >= 1.5 * atr or r.Close >= hh * 0.999)))
+    items.append(("RSI poniżej 75", bool(r.RSI < 75)))
+    return sum(b for _, b in items), len(items), items
+
+
+def mc_paths(df, H, n, mu=0.0, block=5, seed=0, full=True):
+    """Filtered historical simulation: dni (zwrot, max, min względem poprzedniego zamknięcia) z ostatniego roku, standaryzowane
+    zmiennością EWMA, losowane blokami, przeskalowane do bieżącej zmienności. Dryf = mu (0 = brak przewagi)."""
+    d = df.tail(253)
+    if len(d) < 60:
+        return None
+    c, hi, lo = (d[k].to_numpy(float) for k in ("Close", "High", "Low"))
+    r, hx, lx = np.diff(np.log(c)), np.log(hi[1:] / c[:-1]), np.log(lo[1:] / c[:-1])
+    var, v = np.empty(len(r)), max(float(np.var(r[:20])), 1e-8)
+    for i, x in enumerate(r):
+        var[i] = v
+        v = 0.94 * v + 0.06 * x * x
+    sig, s_now = np.sqrt(var), float(np.sqrt(v))
+    zr, zh, zl = r / sig, hx / sig, lx / sig
+    sh = float(zr.mean())
+    zr, zh, zl = zr - sh, zh - sh, zl - sh
+    m, nb = len(r), -(-H // block)
+    idx = (np.random.default_rng(seed).integers(0, m - block + 1, size=(n, nb))[:, :, None] + np.arange(block)).reshape(n, -1)[:, :H]
+    return zr[idx] * s_now + mu, (zh[idx] * s_now + mu) if full else None, (zl[idx] * s_now + mu) if full else None
+
+
+def mc_trade(df, p, H=10, n=2000, mu=0.0, seed=0, fan=False):
+    """Symulacja planu (wejście = p['entry']): P(cel 1 przed stopem), P(stop przed celem), niejednoznaczne (stop i cel w jednej świecy), żadne,
+    rozkład wyniku po H sesjach i wartość oczekiwana w R po kosztach (0,2%). Dane dzienne – dotknięcia sprawdzane na max/min."""
+    g = mc_paths(df, H, n, mu, seed=seed)
+    if g is None or not p:
+        return None
+    rets, hx, lx = g
+    P = np.exp(np.cumsum(rets, axis=1))
+    prev = np.concatenate([np.ones((n, 1)), P[:, :-1]], axis=1)
+    hi, lo = np.maximum(prev * np.exp(hx), P), np.minimum(prev * np.exp(lx), P)
+    s, t = p["stop"] / p["entry"], p["t1"] / p["entry"]
+    hs, ht = lo <= s, hi >= t
+    ks, kt = np.where(hs.any(1), hs.argmax(1), H), np.where(ht.any(1), ht.argmax(1), H)
+    tf, sf, amb, non = kt < ks, ks < kt, (ks == kt) & (ks < H), (ks == H) & (kt == H)
+    end, risk, cost = P[:, -1] - 1, 1 - s, 0.002
+    R = np.where(tf, (t - 1 - cost) / risk, np.where(sf | amb, -(1 - s + cost) / risk, (end - cost) / risk))
+    out = {"pt": round(float(tf.mean()) * 100), "ps": round(float(sf.mean()) * 100), "pa": round(float(amb.mean()) * 100), "pn": round(float(non.mean()) * 100),
+           "pu": round(float((end > 0).mean()) * 100), "er": round(float(R.mean()), 2), "q": [round(float(np.percentile(end, x)) * 100, 1) for x in (5, 25, 50, 75, 95)]}
+    if fan:
+        out["fan"] = [[round(float(v), 4) for v in row] for row in np.percentile(P, [5, 25, 50, 75, 95], axis=0)]
+    return out
+
+
+def mc_scenarios(df, p, seed=0, H=10):
+    """Trzy scenariusze dryfu: neutralny (0), sprzyjający trend (dryf z 60 sesji, ograniczony do 0,05–0,4%/dzień), odwrócenie (przeciwny)."""
+    if not p:
+        return None
+    base = mc_trade(df, p, H, 2000, 0.0, seed, fan=True)
+    if base is None:
+        return None
+    lr = np.log(df.Close.to_numpy(float))
+    mu = float(np.clip((lr[-1] - lr[-61]) / 60, 0.0005, 0.004)) if len(lr) > 61 else 0.001
+    fan = base.pop("fan")
+    sc = {"neutral": {**base, "mu": 0.0}}
+    for k, m_ in (("trend", mu), ("reversal", -mu)):
+        sc[k] = {**mc_trade(df, p, H, 1000, m_, seed + 1), "mu": round(m_ * 100, 3)}
+    return {"H": H, "sc": sc, "fan": fan}
+
+
+def mc_long(df, H=252, n=600, seed=0):
+    """Rozkład wyniku na ~12 miesięcy, bez dryfu (założenie ostrożne). Nie uwzględnia zmian fundamentów."""
+    g = mc_paths(df, H, n, 0.0, block=10, seed=seed, full=False)
+    if g is None:
+        return None
+    end = np.exp(g[0].sum(axis=1)) - 1
+    return {"pu": round(float((end > 0).mean()) * 100), "p20": round(float((end < -0.2).mean()) * 100), "q": [round(float(np.percentile(end, x)) * 100, 1) for x in (5, 25, 50, 75, 95)]}

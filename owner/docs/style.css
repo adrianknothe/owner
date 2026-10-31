@@ -110,3 +110,16 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:var(--soft)}.tb
 .compact th,.compact td{padding:4px 8px;font-size:12.5px}.compact .box,.compact .card,.compact .tile{padding:12px}.compact .av{width:20px;height:20px;font-size:9px}
 @media(max-width:900px){.ng{display:none}.top{padding:8px 12px}#inst .tabs{top:0}.av{width:20px;height:20px;font-size:9px;margin-right:5px}}
 @media(max-width:700px){h1.pg{font-size:20px}#dt{font-size:20px!important}#dpx{font-size:18px}.card:hover,.tile:hover{transform:none;box-shadow:none}}
+
+/* ===== v4: widok instrumentu jak platforma inwestycyjna ===== */
+:root{--bg:#040c08;--panel:#09170f;--soft:#0e2017;--line:#15301f}
+.ihead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 8px}.ititle h1{margin:0}.iprice{margin-left:18px}.iprice .big{font-size:28px}.iact{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.av.big{width:48px;height:48px;font-size:16px;margin:0}.iacttext{font-size:14px;margin:4px 0 8px}
+.seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:2px;gap:1px}.seg button{border:0;background:none;color:var(--mute);padding:4px 10px;border-radius:8px;cursor:pointer;font:inherit;font-size:12.5px;min-height:28px}.seg button:hover{color:var(--ink)}.seg button.on{background:var(--acc);color:#04130c;font-weight:650}
+#rng{gap:6px;align-items:center}#rng .btn{padding:3px 9px;font-size:12px}
+.tabs{border-bottom:1px solid var(--line)}.tabs button{font-weight:550}
+.read{list-style:none;padding:0;margin:0}.read li{padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}.read li:last-child{border:0}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}.kv:last-child{border:0}.cf div{padding:3px 0;font-size:13.5px}
+.tr-range{position:relative;height:6px;background:var(--soft);border-radius:3px;margin:14px 0 6px}.tr-range i{position:absolute;top:-4px;width:3px;height:14px;background:var(--ink);border-radius:2px;transform:translateX(-50%)}
+#bell{position:relative;padding:5px 9px}#bell b{position:absolute;top:-5px;right:-5px;background:var(--acc);color:#04130c;border-radius:9px;font-size:10px;padding:0 5px;line-height:15px}
+@media(max-width:700px){.iprice{margin-left:0}.iprice .big{font-size:20px}.iact{margin-left:0;width:100%}.av.big{width:38px;height:38px;font-size:13px}.seg button{padding:3px 8px;font-size:12px}}

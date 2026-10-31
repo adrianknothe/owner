@@ -13,19 +13,21 @@ from pathlib import Path
 import pandas as pd
 
 import scan
-from app.analysis import extra, indicators, plan, signal
+from app.analysis import confirmations, extra, indicators, mc_trade, plan, signal
 from app.universe import get_universe
 
 HOLD, WARM, DEDUPE = 20, 252, 7
 
 
-def tech_buy(w, sig):
+def tech_buy(w, sig, rel=None):
     """Odpowiednik lv>=3 dla samej techniki (waga technika 0,5 + rynek 0): suma >= 0,6, bez kary za RSI>78."""
     r = w.iloc[-1]
     if r.SMA200 != r.SMA200:
         return False
-    tot = (sig["score"] * 0.4 + (0.3 if r.Close > r.SMA200 else -0.3)) * 0.5 / 0.55
-    return tot >= 0.6 and not (r.RSI > 78)
+    ok, av, _ = confirmations(w, rel)
+    frac = ok / av if av else 1.0
+    tot = (sig["score"] * 0.4 + (0.3 if r.Close > r.SMA200 else -0.3)) * (0.6 + 0.4 * frac) * 0.5 / 0.55
+    return tot >= 0.6 and not (r.RSI > 78) and not (av >= 4 and frac < 0.5)   # jak w aplikacji
 
 
 def replay(sym, df, bench):
@@ -37,15 +39,19 @@ def replay(sym, df, bench):
     for t in range(WARM, len(df) - 1):
         w = df.iloc[:t + 1]
         sig = signal(w)
-        if sig["score"] < 1 or not tech_buy(w, sig):
+        if sig["score"] < 1:
             continue
         rs = float(rs3.iloc[t]) if rs3.iloc[t] == rs3.iloc[t] else 0.0
+        if not tech_buy(w, sig, rs):
+            continue
         p = plan(w, sig, rs)
         if not p or p.get("state") != "teraz" or t - last.get(p["setup"], -99) < DEDUPE:
             continue
         last[p["setup"]] = t
         s = {"sym": sym, "setup": p["setup"], "ts": int(df.index[t].timestamp()), "s": p["stop"], "t1": p["t1"], "i": t}
         scan.eval_one(s, df.iloc[t + 1:t + 1 + HOLD], bench, keep=False)
+        m = mc_trade(w, p, H=HOLD, n=400, seed=t)   # prognoza modelu z chwili sygnału – do kalibracji
+        s["pt"] = m["pt"] if m else None
         out.append(s)
     return out
 
@@ -71,9 +77,14 @@ def main():
     cut = ts[int(len(ts) * 0.6)]
     grp = lambda st, f: scan.summarize([x for x in sigs if x["setup"] == st and f(x)])
     stats = {st: {"all": grp(st, lambda x: True), "is": grp(st, lambda x: x["ts"] < cut), "oos": grp(st, lambda x: x["ts"] >= cut)} for st in scan.SETUPS}
+    calib = []
+    for lo_, hi_ in ((0, 25), (25, 35), (35, 45), (45, 101)):
+        g_ = [x for x in sigs if x.get("pt") is not None and lo_ <= x["pt"] < hi_ and "ex" in x]
+        if len(g_) >= 20:
+            calib.append({"lo": lo_, "hi": min(hi_, 100), "n": len(g_), "pred": round(sum(x["pt"] for x in g_) / len(g_)), "real": round(100 * sum(x["ex"] == "t1" for x in g_) / len(g_))})
     Path("docs").mkdir(exist_ok=True)
     Path("docs/backtest.json").write_text(json.dumps({"generated": time.time(), "symbols": len(syms), "signals": len(sigs), "from": ts[0], "to": ts[-1], "split": cut,
-        "cost_pct": scan.COST * 100, "hold": HOLD, "stats": stats, "notes": ["Tylko technika – bez newsów, konsensusu i social.", "Obciążenie przeżywalnością: dzisiejsi członkowie indeksów.",
+        "cost_pct": scan.COST * 100, "hold": HOLD, "stats": stats, "calib": calib, "notes": ["Tylko technika – bez newsów, konsensusu i social.", "Obciążenie przeżywalnością: dzisiejsi członkowie indeksów.",
         "Reguły nie były stroione pod te dane; podział 60/40 służy ocenie stabilności.", "Wejście po otwarciu następnej sesji, koszt 0,1% na stronę, stop i cel w jednej świecy = niejednoznaczne.", "Sygnały są skorelowane – efektywna liczba niezależnych obserwacji jest mniejsza niż N."]}, separators=(",", ":"), allow_nan=False))
     print("OK", len(sigs))
 

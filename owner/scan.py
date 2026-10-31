@@ -1,7 +1,7 @@
 """Skan całego rynku akcji USA -> docs/results.json + docs/h/*.json (historia do wykresów).
 Źródła: Yahoo Finance (ceny, newsy, konsensus analityków), Google News RSS, ApeWisdom (Reddit),
 StockTwits, CNN Fear & Greed. Tylko informacyjnie – to nie jest porada inwestycyjna."""
-import hashlib, json, math, os, re, time
+import hashlib, json, math, os, re, time, zlib
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
-from app.analysis import extra, indicators, plan, sentiment, signal
+from app.analysis import confirmations, extra, indicators, mc_long, mc_scenarios, plan, sentiment, signal
 from app.universe import UA, get_universe
 
 T0 = time.time()
@@ -47,7 +47,7 @@ def write_hist(sym, df):
     Path("docs/h").mkdir(parents=True, exist_ok=True)
     vol = [int(v / 1000) if math.isfinite(v) else 0 for v in df.Volume]
     Path(f"docs/h/{fn}.json").write_text(json.dumps(
-        {"t": [int(x.timestamp() // 86400) for x in df.index], "c": [n(x) for x in df.Close], "v": vol}, separators=(",", ":")))
+        {"t": [int(x.timestamp() // 86400) for x in df.index], "c": [n(x) for x in df.Close], "v": vol, "o": [n(x) for x in df.Open], "h": [n(x) for x in df.High], "l": [n(x) for x in df.Low]}, separators=(",", ":")))
 
 
 def row(sym, df, meta, spy3m, uf=1.0):
@@ -58,6 +58,9 @@ def row(sym, df, meta, spy3m, uf=1.0):
     sig = signal(df)
     rel = None if spy3m is None else ret3m - spy3m  # benchmark regionalny (USA: SPY, DE: DAX, UK: FTSE 100, PL: WIG20)
     cu = meta.get("cur") or "USD"
+    pl = plan(df, sig, rel or 0.0)
+    ok, av, items = confirmations(df, rel)
+    seed = zlib.crc32(sym.encode()) & 0xFFFFFFFF
     return {"mkt": meta.get("mkt", "US"), "cur": cu, "symbol": sym, "name": meta.get("name", ""), "index": meta["index"], "n100": meta.get("n100", False), "etf": meta.get("etf", False), "extra": meta.get("extra", False), "exch": meta.get("exch", ""),
             "sector": meta.get("sector", ""), "price": n(r.Close), "change_pct": n((r.Close / p.Close - 1) * 100),
             "week_pct": n((r.Close / df.Close.iloc[-6] - 1) * 100), "month_pct": n((r.Close / df.Close.iloc[-22] - 1) * 100),
@@ -65,7 +68,7 @@ def row(sym, df, meta, spy3m, uf=1.0):
             "dvol": n((df.Close * df.Volume).tail(20).mean() / 1e6 * uf, 1), "atr_pct": n(r.ATR / r.Close * 100),
             "rs": n(rel * 100, 1) if rel is not None else None, "hi52_pct": n((r.Close / df.High.tail(252).max() - 1) * 100, 1),
             "above50": bool(r.Close > r.SMA50), "above200": bool(r.Close > r.SMA200) if r.SMA200 == r.SMA200 else None,
-            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": plan(df, sig, rel or 0.0)}
+            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": pl, "cf": [ok, av, [[a_, b_] for a_, b_ in items]], "mc": mc_scenarios(df, pl, seed), "mcl": mc_long(df, seed=seed) if len(df) >= 200 else None}
 
 
 # ---------- źródła informacji ----------
@@ -228,7 +231,9 @@ def jget(url):
 def verdict(r, mood):
     c, cl = {}, lambda x: round(max(-2, min(2, x)), 2)
     a200 = r["above200"]
-    c["tech"] = [cl(r["score"] * 0.4 + (0.3 if a200 else -0.3 if a200 is False else 0)), 0.5, None]
+    cf = r.get("cf")
+    frac = cf[0] / cf[1] if cf and cf[1] else 1.0
+    c["tech"] = [cl((r["score"] * 0.4 + (0.3 if a200 else -0.3 if a200 is False else 0)) * (0.6 + 0.4 * frac)), 0.5, f"potwierdzenia {cf[0]}/{cf[1]}" if cf else None]
     if r.get("news_n"):
         c["news"] = [cl(r["news_sent"] / 2), 0.2, f"{r['news_n']} wiadomości, bilans nastroju {r['news_sent']:+.0f}"]
     st = r.get("st")
@@ -253,6 +258,9 @@ def verdict(r, mood):
         lv = 3 if lv == 4 else 1 if lv == 0 else lv
     if conf == "sprzeczne" and lv >= 3:
         lv = 2; flags.append("Sygnały są sprzeczne – analiza techniczna nie potwierdza newsów/analityków, nie kupuj wbrew trendowi")
+    if lv >= 3 and cf and cf[1] >= 4 and frac < 0.5:
+        lv = 2
+        flags.append(f"Za mało potwierdzeń technicznych ({cf[0]} z {cf[1]}) – sygnał uznany za niepewny")
     if lv >= 3 and r.get("earnings_days") is not None and r["earnings_days"] <= 5:
         lv -= 1; flags.append(f"Wyniki kwartalne za {r['earnings_days']} dni – obniżono ocenę (ryzyko luki)")
     if lv >= 3 and r["rsi"] and r["rsi"] > 78:
@@ -261,7 +269,7 @@ def verdict(r, mood):
         flags.append("Słaby rynek ogólny – zmniejsz wielkość pozycji")
     if (r.get("reddit") or {}).get("rank", 999) <= 25:
         flags.append("Wysokie zainteresowanie na Reddit – ryzyko nagłych ruchów (hype)")
-    r.update(lv=lv, vscore=round(tot, 2), conf=conf, compl=round(sum(v[1] for v in c.values()) * 100), flags=flags, comps={k: v[::2] if k != "tech" else [v[0]] for k, v in c.items()})
+    r.update(lv=lv, vscore=round(tot, 2), conf=conf, compl=round(sum(v[1] for v in c.values()) * 100), flags=flags, comps={k: v[::2] for k, v in c.items()})
 
 
 
@@ -302,6 +310,8 @@ def eval_one(s, after, bench, keep=True):
     s["mfe"], s["mae"], s["n"] = round((float(after.High.max()) / entry - 1) * 100, 2), round((float(after.Low.min()) / entry - 1) * 100, 2), len(after)
     if keep:
         s["fb"] = [[round(float(b.Open), 2), round(float(b.High), 2), round(float(b.Low), 2), round(float(b.Close), 2), _vol(b)] for b in after.itertuples()]
+    if len(after) >= 10:
+        s["g10"] = round((float(after.Close.iloc[9]) / float(after.Open.iloc[0]) - 1) * 100, 2)
     s["ex"] = None
     for _, b in after.iterrows():
         hs, ht = b.Low <= s["s"], b.High >= s["t1"]
@@ -318,7 +328,8 @@ def archive(S, rows):
         if r["lv"] >= 3 and p and p.get("state") == "teraz" and (r["symbol"], p["setup"]) not in recent:
             S.append({"sym": r["symbol"], "ts": int(time.time()), "bd": r["bar"][0], "bar": r["bar"][1:], "setup": p["setup"], "px": r["price"], "lv": r["lv"],
                       "vs": r["vscore"], "cf": r["conf"], "cp": r.get("compl"), "comps": {k: v[0] for k, v in (r.get("comps") or {}).items()},
-                      "e": p["entry"], "s": p["stop"], "t1": p["t1"], "t2": p["t2"]})
+                      "e": p["entry"], "s": p["stop"], "t1": p["t1"], "t2": p["t2"],
+                      "pt": (r.get("mc") or {}).get("sc", {}).get("neutral", {}).get("pt"), "mq": [(r.get("mc") or {}).get("sc", {}).get("neutral", {}).get("q", [None] * 5)[i] for i in (0, 4)]})
     todo = [x for x in S if "r20" not in x and x["ts"] < time.time() - 86400]
     syms = sorted({x["sym"] for x in todo} | {"SPY"})
     bars = {}
@@ -351,6 +362,9 @@ def summarize(g):
     o.update(ev=len(ev), t1=sum(x["ex"] == "t1" for x in ev), stop=sum(x["ex"] == "stop" for x in ev), amb=sum(x["ex"] == "amb" for x in ev))
     if ev:
         o["mfe"], o["mae"] = round(sum(x["mfe"] for x in ev) / len(ev), 2), round(sum(x["mae"] for x in ev) / len(ev), 2)
+    cv = [x for x in g if "g10" in x and x.get("mq") and x["mq"][0] is not None]
+    if cv:
+        o["ncov"], o["cov90"] = len(cv), round(100 * sum(x["mq"][0] <= x["g10"] <= x["mq"][1] for x in cv) / len(cv))
     return o
 
 
