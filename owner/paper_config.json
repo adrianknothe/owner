@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "capital": 10000,
+  "risk_pct": 1.0,
+  "max_positions": 8,
+  "max_weight_pct": 20,
+  "max_sector_pct": 40,
+  "cost_pct": 0.1,
+  "slippage_pct": 0.05,
+  "daily_loss_limit_pct": 3,
+  "weekly_loss_limit_pct": 6,
+  "max_drawdown_halt_pct": 15,
+  "min_quality": 60,
+  "min_confirm_frac": 0.6,
+  "min_dvol_musd": 20,
+  "allow_etf": false,
+  "markets": ["US"],
+  "max_hold_sessions": 15,
+  "cooldown_sessions": 5,
+  "reset_halt": false
+}

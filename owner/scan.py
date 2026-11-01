@@ -11,6 +11,8 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
+import paper
+
 from app.analysis import confirmations, extra, indicators, mc_long, mc_scenarios, plan, sentiment, signal
 from app.universe import UA, get_universe
 
@@ -464,10 +466,25 @@ def long_term(r, e):
     return {"s": s, "l": "Silne" if s >= 70 else "Dobre" if s >= 55 else "Przeciętne" if s >= 40 else "Słabe", "a": act, "cov": cov, "p": p, "why": why, "fl": fl, "up": round(up, 1) if up is not None else None, "tg": m.get("target"), "an": m.get("analysts")}
 
 
+def fetch_bars(syms, period="3mo"):
+    out = {}
+    for i in range(0, len(syms), 100):
+        d = dl(syms[i:i + 100], period)
+        if d is None:
+            continue
+        for t in syms[i:i + 100]:
+            try:
+                out[t] = d[t].dropna(subset=["Open", "High", "Low", "Close"])
+            except Exception:
+                pass
+    return out
+
+
 def main():
     FUND0 = prev_json("fundamentals.json").get("d", {})  # najpierw archiwa: błąd sieci = przerwanie, bez utraty danych
     SIG0 = prev_json("signals.json")
     NEWS0 = prev_json("news.json").get("d", {})
+    PAPER0 = prev_json("paper.json")   # stan symulatora – błąd sieci przerywa skan (nie gubimy stanu)
     uni = get_universe()
     syms = list(uni)
     attempted = 0
@@ -644,14 +661,19 @@ def main():
 
     # indeksy
     idx = []
-    for s, name in [("^GSPC", "S&P 500 (US500)"), ("^NDX", "NASDAQ-100 (US100)"), ("^IXIC", "NASDAQ Composite"), ("^DJI", "Dow Jones (US30)"), ("^RUT", "Russell 2000"), ("^GDAXI", "DAX (Niemcy)"), ("^FTSE", "FTSE 100 (UK)"), ("WIG20.WA", "WIG20 (Polska)"), ("^VIX", "VIX – zmienność")]:
+    MARKETS = [("^GSPC", "S&P 500 (US500)", "idx"), ("^NDX", "NASDAQ-100 (US100)", "idx"), ("^IXIC", "NASDAQ Composite", "idx"), ("^DJI", "Dow Jones (US30)", "idx"), ("^RUT", "Russell 2000", "idx"),
+               ("^GDAXI", "DAX (Niemcy)", "idx"), ("^FTSE", "FTSE 100 (UK)", "idx"), ("WIG20.WA", "WIG20 (Polska)", "idx"), ("^VIX", "VIX – zmienność", "idx"),
+               ("GC=F", "Złoto", "com"), ("SI=F", "Srebro", "com"), ("CL=F", "Ropa WTI", "com"), ("BZ=F", "Ropa Brent", "com"), ("HG=F", "Miedź", "com"),
+               ("EURPLN=X", "EUR/PLN", "fx"), ("USDPLN=X", "USD/PLN", "fx"), ("GBPPLN=X", "GBP/PLN", "fx"), ("EURUSD=X", "EUR/USD", "fx"),
+               ("BTC-USD", "Bitcoin", "cry"), ("ETH-USD", "Ethereum", "cry"), ("^TNX", "Rentowność 10Y USA", "bond"), ("^FVX", "Rentowność 5Y USA", "bond"), ("^TYX", "Rentowność 30Y USA", "bond")]
+    for s, name, cat in MARKETS:
         try:
             d = yf.download(s, period="5y", auto_adjust=True, progress=False)
             d.columns = d.columns.get_level_values(0)
             write_hist(s, d)
             d = indicators(d)
             r, p = d.iloc[-1], d.iloc[-2]
-            idx.append({"symbol": s, "name": name, "price": n(r.Close), "change_pct": n((r.Close / p.Close - 1) * 100),
+            idx.append({"symbol": s, "name": name, "cat": cat, "price": n(r.Close), "change_pct": n((r.Close / p.Close - 1) * 100),
                         "week_pct": n((r.Close / d.Close.iloc[-6] - 1) * 100), "month_pct": n((r.Close / d.Close.iloc[-22] - 1) * 100),
                         "ytd_pct": n((r.Close / d.Close[d.index.year == d.index[-1].year].iloc[0] - 1) * 100), "rsi": n(r.RSI, 1),
                         "above50": bool(r.Close > r.SMA50), "above200": bool(r.Close > r.SMA200), "spark": [n(x, 1) for x in d.Close.tail(60)]})
@@ -659,6 +681,20 @@ def main():
             print("indeks", s, e)
 
     signals = archive(SIG0.get("signals", []), rows)
+    ps_diag = None
+    try:  # symulator portfela papierowego – po archiwum sygnałów, przed usunięciem świec z wierszy
+        pcfg = paper.load_cfg()
+        S = PAPER0 if PAPER0.get("v") else paper.new_state(pcfg, time.time())
+        need = sorted({p["sym"] for p in S["positions"]} | {o["sym"] for o in S["pending"]} | {"SPY"})
+        S = paper.step(S, rows, fetch_bars(need), pcfg, time.time())
+        txt = json.dumps(S, separators=(",", ":"), allow_nan=False, default=lambda o: o.item() if hasattr(o, "item") else str(o))
+        Path("docs").mkdir(exist_ok=True)
+        Path("docs/paper.json").write_text(txt)
+        ps_diag = {"enabled": pcfg["enabled"], "positions": len(S["positions"]), "pending": len(S["pending"]), "closed": len(S["closed"])}
+    except Exception as e:
+        print("paper:", e)
+        if PAPER0:   # w razie błędu zachowaj poprzedni stan (Pages podmienia całą stronę)
+            Path("docs/paper.json").write_text(json.dumps(PAPER0, separators=(",", ":")))
     for r in rows:
         r.pop("bar", None)
     Path("docs").mkdir(exist_ok=True)
@@ -668,7 +704,7 @@ def main():
     out = {"updated_at": time.time(), "indices": idx, "market": market, "market_by": market_by, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
            "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
            "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
-                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
+                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "paper": ps_diag, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
            "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))

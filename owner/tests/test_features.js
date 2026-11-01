@@ -64,4 +64,18 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
  assert(scenHtml({symbol:'Z'}).includes('Brak symulacji'));drawScen();FD={AAA:{ts:1,m:{target:120,tlow:90,thigh:140,rec:'buy',analysts:12,gm:40,om:20,fcf:2e9}}};
  assert(consHtml('AAA').includes('+20,0%')||consHtml('AAA').includes('+20.0%'));assert(ratiosHtml('AAA').includes('Marża brutto'));assert(consHtml('ZZZ').includes('Brak danych'));
  fillInst('AAA');fillFd('AAA');console.log('FEATURES5 OK')})().catch(e=>{console.error('FAIL5',e);process.exit(1)});
+
+// pulpit: rynki wg kategorii, tabele okazji, wykresy kołowe i sektorowe
+(async()=>{const mk=(symbol,name,cat,ch)=>({symbol,name,cat,price:100,change_pct:ch,week_pct:1,month_pct:2,ytd_pct:5,rsi:55,above50:true,above200:true,spark:[1,2,3,4]});
+ D={results:[{symbol:'AAA',name:'Alfa',lv:3,vscore:1.2,plan:{up1:4.5,state:'teraz'},etf:false,sector:'Technology',mkt:'US',change_pct:1,lt:{s:80,a:'Gromadź',up:12}},{symbol:'BBB',lv:0,etf:false,sector:'Technology',mkt:'US',change_pct:-1},{symbol:'CCC',lv:2,etf:true}],
+  indices:[mk('^GSPC','S&P 500 (US500)','idx',1.1),mk('^VIX','VIX – zmienność','idx',-2),mk('GC=F','Złoto','com',.5),mk('BTC-USD','Bitcoin','cry',2.2)],news:{},market_news:[],reddit:[{s:'GME',rank:1,mentions:5,prev:3}],st_trending:[],market:{name:'Byczy',a50:60,adv:55,buy:20,sell:10},market_by:{DE:{name:'Mieszany',a50:50,n:80}},fng:{score:55,rating:'Neutral'}};
+ drawOv();MT='com';drawMkt();MT='idx';drawMkt();drawTick();drawHkpi();drawRisk2();drawTop();drawTopLt();drawDonut();drawSec();console.log('FEATURES6 OK')})().catch(e=>{console.error('FAIL6',e);process.exit(1)});
+
+// symulator portfela papierowego
+(async()=>{PP=null;drawSim();assert.strictEqual(xt('BRK-B'),'BRK.B.US');
+ PP={cfg:{slippage_pct:.05,cost_pct:.1,max_drawdown_halt_pct:15,daily_loss_limit_pct:3,weekly_loss_limit_pct:6,risk_pct:1,max_weight_pct:20,max_sector_pct:40,max_positions:8,min_quality:60,min_confirm_frac:.6,min_dvol_musd:20,max_hold_sessions:15},version:'1.0',updated:1.7e9,equity:10200,cash:8000,start:{capital:10000},stats:{n:3,win:67,avg_r:.4,pf:1.5,ret:2,spy:1,mdd:-3},limits:{day:.5,week:1,dd:-1,blocked:[]},halt:{reason:'test <b>x</b>'},
+  curve:[{d:'2026-01-02',e:10000,spy:500},{d:'2026-01-05',e:10200,spy:505}],pending:[{sym:'BRK-B',shares:5,zlo:99,zhi:100,stop:95,t1:106,t2:112}],positions:[{sym:'AAA<i>',shares:10,entry:100,mark:104,stop:96,t1:106,t2:112,hold:2,half:false,setup:'Trend'}],
+  todo:[{ts:1.7e9,k:'sell',s:'XYZ',x:'XYZ.US',m:'Sprzedano 10 szt. XYZ'}],journal:[{ts:1.7e9,t:'reject',s:'Q',m:'Odrzucono <script>'}],closed:[{sym:'C',setup:'Trend',entry:10,exit:11,pnl_pct:10,r:1.2,hold:3}]};
+ const txt=simCopy(PP);assert(txt.includes('KUP BRK.B.US')&&txt.includes('SPRZEDAJ XYZ.US')&&txt.includes('TRZYMAJ'));drawSim();
+ PP.curve=[];PP.pending=[];PP.positions=[];PP.todo=[];PP.journal=[];PP.closed=[];PP.halt=null;drawSim();console.log('FEATURES7 OK')})().catch(e=>{console.error('FAIL7',e);process.exit(1)});
 `);

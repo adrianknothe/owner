@@ -11,3 +11,4 @@ function drawLt(){const B=$('#ltb');if(!B)return;const q=$('#lq').value.trim().t
 ['lq','lm','lc','la'].forEach(i=>$('#'+i).oninput=drawLt);
 let _rz;addEventListener('resize',()=>{clearTimeout(_rz);_rz=setTimeout(()=>{if($('#inst').classList.contains('on')&&H)drawChart()},250)});
 (function(){const b=document.body;if(b&&localStorage.getItem('dens')=='1')b.classList.add('compact');const d=$('#dens');if(d)d.onclick=()=>{if(!b)return;const on=b.classList.toggle('compact');localStorage.setItem('dens',on?'1':'0')}})();
+(function(){const b=document.body;if(b&&localStorage.getItem('theme')=='dark')b.classList.add('dark');const t=$('#theme');if(t)t.onclick=()=>{if(!b)return;b.classList.toggle('dark');localStorage.setItem('theme',b.classList.contains('dark')?'dark':'light');drawAll();if($('#inst').classList.contains('on')&&H)drawChart()}})();
