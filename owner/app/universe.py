@@ -20,7 +20,7 @@ GLD IAU SLV GDX GDXJ USO UNG DBC PDBC TLT IEF SHY AGG BND LQD HYG JNK TIP BIL SG
 VEA VWO EFA EEM IEMG IXUS VXUS VGK EWJ EWZ EWW FXI MCHI KWEB INDA EWY EWT EWG ACWI VT
 SCHD VYM DVY VIG DGRO NOBL HDV SDY JEPI JEPQ QYLD XYLD DIVO SPYD FDVV SCHY VNQ VNQI IYR
 ARKK ARKW ARKG TQQQ SQQQ SOXL SOXS UPRO SPXL SPXS TNA TZA UVXY VXX SVXY BITO IBIT FBTC ETHA GBTC BLOK
-MTUM QUAL USMV VLUE SIZE MOAT COWZ CALF RPV VBR IWN IWO""".split()
+MTUM QUAL USMV VLUE SIZE MOAT COWZ CALF RPV VBR IWN IWO CIBR BOTZ ROBO AIQ SPLV HACK""".split()
 EU = [("DAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/DAX"), ("MDAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/MDAX"),
       ("SDAX", "DE", ".DE", "XETRA", "EUR", "https://en.wikipedia.org/wiki/SDAX"), ("FTSE 100", "UK", ".L", "LSE", "GBX", "https://en.wikipedia.org/wiki/FTSE_100_Index"),
       ("FTSE 250", "UK", ".L", "LSE", "GBX", "https://en.wikipedia.org/wiki/FTSE_250_Index"), ("WIG20", "PL", ".WA", "GPW", "PLN", "https://en.wikipedia.org/wiki/WIG20"),

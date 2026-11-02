@@ -54,3 +54,9 @@ Zakładka „Długi termin” ocenia spółki z dostępnych danych finansowych (
 Stan trzyma `docs/paper.json` (przenoszony między skanami przez GitHub Pages). Ustawienia: `paper_config.json` (kapitał, ryzyko na transakcję, limity, `reset_halt`).
 Zakładka „Symulator” pokazuje krzywą kapitału vs SPY, pozycje, dziennik decyzji i listę „Do wykonania w XTB” (ręcznie – XTB nie ma API). Testy: `python tests/test_paper.py`.
 Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione; wynik nie dowodzi przewagi przed ~100 transakcjami.
+
+## Portfel XTB i start symulatora
+
+- Plik `moj-portfel-xtb.json` (osobno, **nie wrzucaj go do repozytorium** – to prywatne dane) wczytasz w aplikacji: Portfel XTB → „Wczytaj portfel / kopię (JSON)". Dane zostają tylko w Twojej przeglądarce. Wartości ze zrzutu ekranu to migawka; aktualizuj ją importem Excela z XTB.
+- Każda pozycja ma decyzję łączoną (krótki + długi termin): Dokup / Trzymaj / Rozważ redukcję / Sprzedaj. Plany ETF korzystają z sygnałów amerykańskich odpowiedników (proxy).
+- Symulator: `paper_config.json` → `start_date` (2026-11-02), kapitał 10 000 USD. Zlecenia realizowane są po otwarciu następnej sesji; zlecenia złożone po otwarciu nie wypełniają się po cenie otwarcia tego samego dnia.

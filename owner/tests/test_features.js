@@ -78,4 +78,17 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
   todo:[{ts:1.7e9,k:'sell',s:'XYZ',x:'XYZ.US',m:'Sprzedano 10 szt. XYZ'}],journal:[{ts:1.7e9,t:'reject',s:'Q',m:'Odrzucono <script>'}],closed:[{sym:'C',setup:'Trend',entry:10,exit:11,pnl_pct:10,r:1.2,hold:3}]};
  const txt=simCopy(PP);assert(txt.includes('KUP BRK.B.US')&&txt.includes('SPRZEDAJ XYZ.US')&&txt.includes('TRZYMAJ'));drawSim();
  PP.curve=[];PP.pending=[];PP.positions=[];PP.todo=[];PP.journal=[];PP.closed=[];PP.halt=null;drawSim();console.log('FEATURES7 OK')})().catch(e=>{console.error('FAIL7',e);process.exit(1)});
+
+// portfel: migawka wartości, plany inwestycyjne z odpowiednikami, decyzja łączona (krótki + długi termin)
+(async()=>{const row=(o)=>({name:'N',price:100,cur:'USD',lv:2,vscore:0,conf:'średnia',compl:80,flags:[],reasons:[],atr_pct:2,etf:false,above200:true,rsi:50,plan:null,sector:'IT',lt:null,mkt:'US',...o});
+ D={results:[row({symbol:'NVDA',lv:3,lt:{s:80,l:'Silne',a:'Gromadź',cov:90,p:{},why:['ROE 30%'],fl:[],up:15}}),row({symbol:'BAD',lv:0,lt:{s:30,l:'Słabe',a:'Unikaj',cov:70,p:{},why:[],fl:['ujemny free cash flow'],up:null}}),row({symbol:'SPY',etf:true,lv:1,price:500})],indices:[],news:{},market_news:[],fx:{USD:{r:4,d:'x'}}};FD={};NT={};
+ PF={v:2,acct:'PLN',snap:{asOf:1,file:'x',open:{a:{id:'a',sym:'NVDA.US',vol:2,op:100,mk:null,pv:800,t:0,cat:'Akcje',mv:900},b:{id:'b',sym:'NOSCAN.US',vol:1,op:10,mk:null,pv:100,t:0,cat:'Akcje',mv:70}}},closed:{},cash:{},plans:[{name:'Plan',asof:'d',cash:10,items:[{name:'Core S&P 500 UCITS',short:'Core S&P 500',val:1000,pl:-50,plp:-4.76,cur:90,tgt:80,proxy:'SPY'}]}]};
+ const C=pfCalc(),n=C.H.find(h=>h.y=='NVDA'),b=C.H.find(h=>h.y=='NOSCAN'),e=C.H.find(h=>h.manual);
+ near(n.V.va,2*100*4);near(n.V.total,(800/800-1)*100+0,1e-9+100);                 // wycena z ceny skanera: 2 szt. × 100 USD × 4 = 800 PLN
+ near(b.V.va,70);near(b.V.total,-30);assert(b.V.note[0].includes('zrzutu'));      // brak ceny: wartość z migawki zamiast zera
+ assert(e&&e.proxy=='SPY'&&e.V.va==1000&&C.cashPlans==10&&C.nk==3);
+ assert.strictEqual(advise({...n,w:5}).act,'Dokup');                                // długi 'Gromadź' + krótki 'Kupno' + mała waga
+ const bad=row({symbol:'BAD',lv:0,lt:D.results[1].lt});assert.strictEqual(advise({y:'BAD',x:bad,m:{},V:{total:-40},type:'Akcje',w:3}).act,'Sprzedaj');
+ const ea=advise(e);assert(ea.act.startsWith('Trzymaj plan')&&ea.why.some(w=>w.includes('SPY'))&&!ea.why.some(w=>w.includes('Poziom obrony')));
+ assert(plansHtml().includes('nadwaga')&&plansHtml().includes('Core S&amp;P 500'));drawPf();console.log('FEATURES8 OK')})().catch(e=>{console.error('FAIL8',e);process.exit(1)});
 `);

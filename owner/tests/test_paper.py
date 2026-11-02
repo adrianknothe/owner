@@ -115,6 +115,31 @@ def test_stats_and_curve():
     json.dumps(S, allow_nan=False)
 
 
+
+
+
+def test_start_date_waits_then_resets_once():
+    cfg = dict(CFG, start_date="2026-01-06")
+    S = paper.new_state(cfg, T("2026-01-04 10:00")); S["cash"] = 1234.0
+    paper.step(S, [row()], {"SPY": spy("2026-01-02")}, cfg, T("2026-01-05 08:00"))
+    assert S["waiting"] == "2026-01-06" and not S["pending"] and not S["positions"]
+    paper.step(S, [row()], {"SPY": spy("2026-01-05")}, cfg, T("2026-01-06 08:00"))
+    assert S["waiting"] is None and S["start"]["capital"] == 10000 and len(S["pending"]) == 1 and any("Start symulacji" in j["m"] for j in S["journal"])
+    cash_after = S["cash"]; n_j = len(S["journal"])
+    paper.step(S, [row()], {"SPY": spy("2026-01-05")}, cfg, T("2026-01-06 09:00"))
+    assert S["cash"] == cash_after and len(S["pending"]) == 1 and len(S["journal"]) == n_j
+
+
+def test_late_order_cannot_fill_at_todays_open():
+    S = paper.new_state(CFG, T("2026-01-06 15:00"))
+    paper.step(S, [row()], {"SPY": spy("2026-01-05")}, CFG, T("2026-01-06 15:00"))      # sygnał po otwarciu sesji 06.01
+    assert len(S["pending"]) == 1
+    X = bars([("2026-01-05", 100, 101, 99, 100), ("2026-01-06", 100.0, 101, 99, 100), ("2026-01-07", 100.5, 104, 99, 103)])
+    paper.step(S, [], {"SPY": spy("2026-01-07"), "XYZ": X}, CFG, T("2026-01-08 08:00"))
+    f = [j for j in S["journal"] if j["t"] == "fill"]
+    assert S["positions"] and abs(S["positions"][0]["entry"] - 100.5 * 1.0005) < 0.01, S["positions"]
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

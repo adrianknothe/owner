@@ -14,8 +14,11 @@
   "min_confirm_frac": 0.6,
   "min_dvol_musd": 20,
   "allow_etf": false,
-  "markets": ["US"],
+  "markets": [
+    "US"
+  ],
   "max_hold_sessions": 15,
   "cooldown_sessions": 5,
-  "reset_halt": false
+  "reset_halt": false,
+  "start_date": "2026-11-02"
 }

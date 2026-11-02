@@ -10,12 +10,12 @@ Zasady (wersja 1.0):
 import json
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 VERSION = "1.0"
 DEFAULTS = {"enabled": True, "capital": 10000.0, "risk_pct": 1.0, "max_positions": 8, "max_weight_pct": 20.0, "max_sector_pct": 40.0, "cost_pct": 0.1, "slippage_pct": 0.05,
             "daily_loss_limit_pct": 3.0, "weekly_loss_limit_pct": 6.0, "max_drawdown_halt_pct": 15.0, "min_quality": 60, "min_confirm_frac": 0.6, "min_dvol_musd": 20.0,
-            "allow_etf": False, "markets": ["US"], "max_hold_sessions": 15, "cooldown_sessions": 5, "reset_halt": False}
+            "allow_etf": False, "markets": ["US"], "max_hold_sessions": 15, "cooldown_sessions": 5, "reset_halt": False, "start_date": None}
 
 
 def load_cfg(paths=("paper_config.json", "owner/paper_config.json")):
@@ -83,6 +83,13 @@ def _process_pending(S, comp, cfg, now):
             else:
                 keep.append(o)
             continue
+        cd = datetime.fromtimestamp(o["ts"], timezone.utc)      # zlecenie złożone po otwarciu sesji nie może wypełnić się po jej otwarciu (look-ahead)
+        min_d = (cd + timedelta(days=1 if cd.hour * 60 + cd.minute >= 13 * 60 + 30 else 0)).strftime("%Y-%m-%d")
+        nb2 = nb[nb.index.strftime("%Y-%m-%d") >= min_d]
+        if not len(nb2):
+            keep.append(o)
+            continue
+        nb = nb2
         op, d = float(nb.iloc[0].Open), nb.index[0].strftime("%Y-%m-%d")
         why = "otwarcie poniżej stopa (luka)" if op <= o["stop"] else "cena uciekła powyżej strefy wejścia" if op > o["zhi"] * 1.005 else None
         px = op * (1 + slip)
@@ -278,6 +285,13 @@ def step(S, rows, bars, cfg, now):
     cfg = _sane(cfg)
     if not cfg["enabled"]:
         return S
+    sd = cfg.get("start_date")
+    if sd and _today(now) < sd:   # przed datą startu symulator tylko czeka (bez transakcji)
+        S.update(waiting=sd, updated=int(now), cfg=cfg, equity=round(_equity(S), 2), stats=stats(S), limits={"dd": 0, "day": 0, "week": 0, "peak": cfg["capital"], "blocked": ["czeka na start"]})
+        return S
+    if sd and S.get("sd") != sd:   # jednorazowy start/reset na wskazany dzień: świeży kapitał wirtualny
+        S.update(sd=sd, waiting=None, cash=float(cfg["capital"]), start={"capital": cfg["capital"], "ts": int(now)}, positions=[], pending=[], closed=[], curve=[], todo=[], halt=None, rej=[])
+        _log(S, now, "limit", "", f"Start symulacji ({sd}): {cfg['capital']:.0f} USD wirtualnego kapitału")
     if cfg["reset_halt"] and S.get("halt"):
         S["halt"] = None
         _log(S, now, "limit", "", "Wznowiono po ręcznym resecie kill switch (reset_halt) – pamiętaj, by ustawić je z powrotem na false")
