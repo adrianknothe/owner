@@ -156,5 +156,22 @@ def test_confirmations_and_mc():
     scan.verdict(r, ("Byczy", 0.5)); assert r["lv"] <= 2 and any("potwierdzeń" in f for f in r["flags"])
 
 
+def test_data_quality_gate_and_cache_fallback():
+    import pandas as pd
+    d = pd.DataFrame({"Close": [100.0] * 8 + [160.0], "Volume": [1000] * 9})
+    assert any(sev for _, sev in scan.qual(d))                       # skok >35% = możliwy split/błąd danych
+    z = pd.DataFrame({"Close": [100.0] * 9, "Volume": [0] * 9})
+    assert any("obrotu" in m for m, _ in scan.qual(z))
+    ok = pd.DataFrame({"Close": [100.0, 101, 102, 101, 103, 104], "Volume": [10] * 6})
+    assert scan.qual(ok) == []
+    base = {"score": 3, "above200": True, "cf": [6, 6, []], "price": 100, "rsi": 50, "change_pct": 1}
+    a = dict(base); scan.verdict(a, ("Byczy", 0.5)); assert a["lv"] == 3
+    b = dict(base, dq=["Notowania nieaktualne"], dqs=True); scan.verdict(b, ("Byczy", 0.5))
+    assert b["lv"] == 2 and "Notowania nieaktualne" in b["flags"]    # poważna uwaga jakości blokuje kupno
+    now = 1000000.0
+    assert scan.news_stats([{"sent": 1, "ts": now - 3600}, {"sent": 2, "ts": now - 100 * 3600}], now) == (2, 2.0)
+
+
 if __name__ == "__main__":
     test_confirmations_and_mc(); print("ok mc")
+    test_data_quality_gate_and_cache_fallback(); print("ok dq")

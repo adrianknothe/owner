@@ -1,6 +1,6 @@
 # Owner – skaner rynku USA (wersja darmowa)
 
-GitHub Actions co ~20 min (pn–pt, godziny sesji USA) skanuje ~1400 spółek (S&P 500/400/600 + NASDAQ-100)
+GitHub Actions co ~10 min (kolejka, gdy skan trwa dłużej) (pn–pt, godziny sesji USA) skanuje ~1400 spółek (S&P 500/400/600 + NASDAQ-100)
 z Yahoo Finance, liczy RSI/MACD/SMA/Bollinger/wolumen i publikuje wynik na GitHub Pages.
 Nie jest to porada inwestycyjna.
 
@@ -60,3 +60,11 @@ Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione
 - Plik `moj-portfel-xtb.json` (osobno, **nie wrzucaj go do repozytorium** – to prywatne dane) wczytasz w aplikacji: Portfel XTB → „Wczytaj portfel / kopię (JSON)". Dane zostają tylko w Twojej przeglądarce. Wartości ze zrzutu ekranu to migawka; aktualizuj ją importem Excela z XTB.
 - Każda pozycja ma decyzję łączoną (krótki + długi termin): Dokup / Trzymaj / Rozważ redukcję / Sprzedaj. Plany ETF korzystają z sygnałów amerykańskich odpowiedników (proxy).
 - Symulator: `paper_config.json` → `start_date` (2026-11-02), kapitał 10 000 USD. Zlecenia realizowane są po otwarciu następnej sesji; zlecenia złożone po otwarciu nie wypełniają się po cenie otwarcia tego samego dnia.
+
+## Jakość i kompletność danych (v6)
+- Skan raportuje pokrycie (`diag.cov`, panel boczny): dane finansowe i newsy na spółkę, symbole bez notowań (ponawiane w mniejszych paczkach), nieaktualne notowania.
+- Newsy i dane finansowe odświeżane są od najstarszych (rotacja obejmuje cały rynek), moje instrumenty z `extra_tickers.txt` mają pierwszeństwo.
+- Spółki poza paczką bieżącego skanu korzystają z zapisanych wcześniej newsów i danych finansowych.
+- Kontrola jakości: skok ceny >35% (split/błąd), brak obrotu 5 sesji, nieaktualna ostatnia sesja → rekomendacja kupna jest blokowana i oznaczona.
+- Daty wyników kwartalnych sprawdzane są także dla wszystkich spółek z planem wejścia.
+- Harmonogram `*/10`: GitHub nie gwarantuje terminów (opóźnienia bywają duże), a Yahoo i tak opóźnia ceny ~15 min – realna świeżość to zwykle 10–25 min.

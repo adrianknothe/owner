@@ -1,2 +1,5 @@
 # Własne symbole (format Yahoo Finance), po jednym w linii lub po przecinku. Dodaj tu instrumenty z XTB spoza USA,
 # np. europejskie ETF-y: VWCE.DE, CNDX.L, IUSQ.DE, spółki z GPW: CDR.WA, PKO.WA
+# Moje pozycje i plany z XTB (gwarantują skan także spółek spoza indeksów S&P/NASDAQ-100)
+A, GOOGL, ALAB, LEU, CHKP, ETSY, MRVL, NBIS, NTSK, NVDA, TSM, TEM, VRT
+SPY, QQQ, XLK, ROBO, MTUM, CIBR, AIQ, SPLV, VLUE, VT, GLD

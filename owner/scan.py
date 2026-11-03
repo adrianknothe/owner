@@ -44,6 +44,25 @@ def dl(chunk, period):
         time.sleep(5)
 
 
+def qual(df):
+    """Kontrola jakości notowań: lista (uwaga, czy poważna). Poważne uwagi blokują rekomendację kupna."""
+    out = []
+    try:
+        ch = df.Close.pct_change().tail(5).abs()
+        if len(ch) and float(ch.max()) > 0.35:
+            out.append(("Skok ceny >35% w jednej sesji – możliwy split lub błąd danych, zweryfikuj w XTB", True))
+        if float(df.Volume.tail(5).sum()) == 0:
+            out.append(("Brak obrotu w ostatnich 5 sesjach – instrument nieaktywny lub wstrzymany", True))
+    except Exception:
+        pass
+    return out
+
+
+def news_stats(ns, now=None):
+    now = now or time.time()
+    return len(ns), round(sum(a["sent"] * (1 if now - a["ts"] < 72 * 3600 else .5) for a in ns), 1)
+
+
 def write_hist(sym, df):
     fn = re.sub(r"[^A-Za-z0-9-]", "", sym)
     Path("docs/h").mkdir(parents=True, exist_ok=True)
@@ -271,6 +290,10 @@ def verdict(r, mood):
         flags.append("Słaby rynek ogólny – zmniejsz wielkość pozycji")
     if (r.get("reddit") or {}).get("rank", 999) <= 25:
         flags.append("Wysokie zainteresowanie na Reddit – ryzyko nagłych ruchów (hype)")
+    if r.get("dq"):
+        flags.extend(r["dq"])
+        if r.get("dqs") and lv >= 3:
+            lv = 2
     r.update(lv=lv, vscore=round(tot, 2), conf=conf, compl=round(sum(v[1] for v in c.values()) * 100), flags=flags, comps={k: v[::2] for k, v in c.items()})
 
 
@@ -511,8 +534,9 @@ def main():
     pre = list(dict.fromkeys([s for s, m in uni.items() if m.get("extra")] + list(uni)[:2300]))
     fstat = {"try": 0, "ok": 0}
     try:
-        need_f = [s for s in pre if time.time() - FUND.get(s, {}).get("ts", 0) > 7 * 86400][:FUND_N]
-        need_n = [s for s in pre if time.time() - NEWS.get(s, {}).get("ts", 0) > 3 * 3600][:NEWS_N]
+        pri = {s for s, m in uni.items() if m.get("extra")}
+        need_f = sorted([s for s in pre if time.time() - FUND.get(s, {}).get("ts", 0) > 7 * 86400], key=lambda s: (s not in pri, FUND.get(s, {}).get("ts", 0)))[:FUND_N]
+        need_n = sorted([s for s in pre if time.time() - NEWS.get(s, {}).get("ts", 0) > 3 * 3600], key=lambda s: (s not in pri, NEWS.get(s, {}).get("ts", 0)))[:NEWS_N]   # najstarsze najpierw – rotacja obejmuje cały rynek
         with ThreadPoolExecutor(8) as ex:
             for s, d in ex.map(fin, need_f):
                 fstat["try"] += 1
@@ -525,28 +549,59 @@ def main():
     except Exception as e:
         print("wstępne dane:", e)
 
-    # etap 1: cały rynek (1 rok dziennych świec), tylko płynne spółki
-    rows = []
-    for i in range(0, len(syms), CHUNK):
-        if elapsed() > 13:
-            print(f"Przekroczono budżet czasu – przeskanowano {i} z {len(syms)}"); break
-        attempted = min(i + CHUNK, len(syms))
-        data = dl(syms[i:i + CHUNK], "1y")
-        if data is None:
-            continue
-        for s in syms[i:i + CHUNK]:
+    # etap 1: cały rynek (1 rok dziennych świec), tylko płynne spółki; symbole bez danych są ponawiane (mniejsze paczki)
+    rows, got, attempted = [], set(), 0
+
+    def proc(data, chunk):
+        for s in chunk:
             try:
                 df = data[s].dropna(subset=["Close"])
+                if len(df):
+                    got.add(s)
                 m, mk = uni[s], uni[s].get("mkt", "US")
                 uf = usd.get(m.get("cur") or "USD", 1.0)
                 dv = (df.Close * df.Volume).tail(20).mean() * uf
                 ok = m.get("extra") or (mk != "US" and dv >= 2e5) or (mk == "US" and df.Close.iloc[-1] >= 1.5 and dv >= (3e6 if m.get("etf") else 1e6))
                 if len(df) >= 70 and ok:
-                    rows.append(row(s, df.copy(), m, bm_us if mk == "US" else bm.get(mk), uf))
+                    r_ = row(s, df.copy(), m, bm_us if mk == "US" else bm.get(mk), uf)
+                    q = qual(df)
+                    r_["dq"], r_["dqs"] = [x[0] for x in q], any(x[1] for x in q)
+                    rows.append(r_)
                     write_hist(s, df)
             except Exception:
                 pass
+
+    for i in range(0, len(syms), CHUNK):
+        if elapsed() > 13:
+            print(f"Przekroczono budżet czasu – przeskanowano {i} z {len(syms)}"); break
+        attempted = min(i + CHUNK, len(syms))
+        data = dl(syms[i:i + CHUNK], "1y")
+        if data is not None:
+            proc(data, syms[i:i + CHUNK])
         time.sleep(0.5)
+    miss = [s for s in syms[:attempted] if s not in got]
+    miss.sort(key=lambda s: not uni[s].get("extra"))   # najpierw moje instrumenty
+    n_retry = 0
+    for i in range(0, min(len(miss), 240), 30):
+        if elapsed() > 12:
+            break
+        data = dl(miss[i:i + 30], "1y")
+        if data is not None:
+            proc(data, miss[i:i + 30]); n_retry += len(miss[i:i + 30])
+        time.sleep(0.5)
+    miss = [s for s in miss if s not in got]
+    # nieaktualne notowania (wstrzymany obrót, wycofanie z giełdy): odniesienie = najnowsza sesja na danym rynku
+    ref = {}
+    for r_ in rows:
+        ref[r_["mkt"]] = max(ref.get(r_["mkt"], ""), r_["bar"][0])
+    stale = []
+    for r_ in rows:
+        try:
+            gap = (date.fromisoformat(ref[r_["mkt"]]) - date.fromisoformat(r_["bar"][0])).days
+        except Exception:
+            continue
+        if gap >= 4:
+            r_["dq"].append(f"Notowania nieaktualne – ostatnia sesja {r_['bar'][0]}"); r_["dqs"] = True; stale.append(r_["symbol"])
     if len(rows) < 100:
         raise SystemExit(f"Zbyt mało danych ({len(rows)}) – przerywam, żeby nie nadpisać strony")
     print(f"Etap 1: {len(rows)} płynnych spółek, {elapsed():.1f} min")
@@ -576,7 +631,8 @@ def main():
         with ThreadPoolExecutor(8) as ex:
             news = dict(ex.map(fetch_news, focus))
             fu = dict(ex.map(fund, focus[:90]))
-            ea = dict(ex.map(earnings_days, [r["symbol"] for r in cand[:60]]))
+            ea_syms = list(dict.fromkeys([r["symbol"] for r in cand[:60]] + [r["symbol"] for r in sorted((x for x in rows if x["plan"]), key=lambda x: -x["plan"]["quality"])[:100]]))
+            ea = dict(ex.map(earnings_days, ea_syms))
             sto = dict(ex.map(stocktwits, focus[:50]))
         for r in rows:
             s = r["symbol"]
@@ -595,6 +651,17 @@ def main():
             r["earnings_days"] = e if e is not None and 0 <= e <= 10 else None
         market_news = sorted(ynews("SPY", 5) + gnews("stock market Wall Street when:2d", 6) + gnews("Federal Reserve economy when:3d", 4), key=lambda a: -a["ts"])[:12]
         st_trend = [{"s": x["symbol"], "t": x.get("title", "")} for x in jget("https://api.stocktwits.com/api/2/trending/symbols.json").get("symbols", [])[:12]]
+    # luki: spółki poza paczką bieżącego skanu korzystają z zapisanych wcześniej newsów i danych finansowych
+    for r in rows:
+        s = r["symbol"]
+        if "news_n" not in r:
+            ns = (NEWS.get(s) or {}).get("items")
+            if ns and time.time() - NEWS[s]["ts"] < 36 * 3600:
+                r["news_n"], r["news_sent"] = news_stats(ns)
+        if not r.get("fund"):
+            m_ = (FUND.get(s) or {}).get("m")
+            if m_:
+                r["fund"] = {k: m_.get(k) for k in ("rec", "target", "analysts", "pe", "fpe", "mcap", "short", "beta", "sector", "industry", "dr", "payout", "exdiv")}
     for r in rows:
         verdict(r, moods.get(r['mkt'], mood))
 
@@ -701,10 +768,16 @@ def main():
     Path("docs/signals.json").write_text(json.dumps({"updated": time.time(), "cost_pct": COST * 100, "signals": signals, "stats": sig_stats(signals)}, separators=(",", ":"), allow_nan=False))
     fng = jget("https://production.dataviz.cnn.io/index/fearandgreed/graphdata").get("fear_and_greed", {})
     top_reddit = [{"s": k, **v} for k, v in sorted(reddit.items(), key=lambda kv: kv[1]["rank"])[:12]]
+    now_ = time.time()
+    ex_syms = [s for s, m in uni.items() if m.get("extra")]
+    have = {r["symbol"] for r in rows}
+    cov = {"rows": len(rows), "fund": sum(1 for r in rows if r.get("fund")), "news": sum(1 for r in rows if r.get("news_n") is not None), "stale": stale[:30], "n_stale": len(stale),
+           "miss": len(miss), "retry": n_retry, "extra_missing": [s for s in ex_syms if s not in have][:30], "dq": sum(1 for r in rows if r.get("dqs")),
+           "fund_age_h": round(sum(now_ - (FUND.get(r["symbol"]) or {}).get("ts", now_) for r in rows if (FUND.get(r["symbol"]) or {}).get("ts")) / 3600 / max(1, sum(1 for r in rows if (FUND.get(r["symbol"]) or {}).get("ts"))))}
     out = {"updated_at": time.time(), "indices": idx, "market": market, "market_by": market_by, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
            "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
            "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
-                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "paper": ps_diag, "fx": len(fx) > 1, "minutes": round(elapsed(), 1)},
+                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "paper": ps_diag, "fx": len(fx) > 1, "minutes": round(elapsed(), 1), "cov": cov},
            "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))
