@@ -104,6 +104,11 @@ PHRASES = {
     "class action": -2, "lawsuit": -1, "recall": -1, "plunges": -2, "tumbles": -2, "sinks": -2, "slides": -1, "falls": -1,
     "drops": -1, "layoffs": -1, "bankruptcy": -3, "fraud": -3, "probe": -1, "warning": -1, "halts": -1, "delisting": -3,
     "misses": -1, "short seller": -2, "data breach": -2,
+    "raises dividend": 1, "special dividend": 1, "share repurchase": 1, "accelerating growth": 1, "margin expansion": 1, "initiates coverage with buy": 1, "added to the s&p": 1,
+    "short seller report": -2, "short report": -2, "subpoena": -2, "job cuts": -1,
+    "profit warning": -2, "withdraws guidance": -2, "going concern": -3, "restatement": -2, "fda rejects": -2, "complete response letter": -2,
+    "weak demand": -1, "slowing growth": -1, "insider selling": -1, "dilution": -1, "secondary offering": -1, "stock offering": -1, "convertible notes": -1,
+    "wyniki powyżej": 1, "rekomendacja kupuj": 1, "podnosi cenę docelową": 2, "obniża cenę docelową": -2, "strata": -1, "ostrzeżenie o zysku": -2,
 }
 
 

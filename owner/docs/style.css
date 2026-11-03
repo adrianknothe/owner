@@ -152,3 +152,14 @@ aside nav button.on{background:rgba(255,255,255,.10);color:#fff;box-shadow:inset
 table.mini{font-size:13px}.box.dark{background:linear-gradient(160deg,#12372a,#08201a);color:#e6f2ea;border:0}.box.dark h2{color:#8fb8a2}
 .tab.on#ov{animation:fadein .18s ease}
 @media(max-width:700px){.hbig{font-size:30px}.hero{padding:12px}.hctl{align-items:flex-start;width:100%}.donut{width:130px;height:130px}.mrow{grid-template-columns:30px minmax(0,1fr) 54px auto;gap:7px}}
+
+/* ===== v6: naprawa układu na telefonie (kolejne reguły .app nadpisywały jedną kolumnę) ===== */
+@media(max-width:900px){.app{grid-template-columns:minmax(0,1fr)!important}main,.body{width:100%;min-width:0}}
+@media(max-width:700px){
+ .g4k{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}.kp .big{font-size:18px}.kp{padding:10px!important}
+ table.tp th:nth-child(n+7),table.tp td:nth-child(n+7),table.tp th:nth-child(3),table.tp td:nth-child(3){display:none}table.tab th:nth-child(2),table.tab td:nth-child(2),table.tab th:nth-child(3),table.tab td:nth-child(3){display:none}
+ .tbl td:first-child{max-width:46vw;overflow:hidden;text-overflow:ellipsis}.warnbox{font-size:12px;padding:8px 10px}
+}
+@media(max-width:700px){
+ .row>select{flex:1 1 calc(50% - 8px);font-size:14px;padding:8px 6px;text-overflow:ellipsis}.row>input[type=number],.row>input[type=text]{flex:0 1 84px}
+}

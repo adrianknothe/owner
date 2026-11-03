@@ -22,6 +22,7 @@ FUND_N, NEWS_N = 120, 150  # ile symboli odświeżamy na skan (rotacyjnie, z arc
 CORE = ("S&P 500", "NASDAQ-100", "DAX", "FTSE 100", "WIG20")  # w pierwszej kolejności: dane finansowe i historia 5-letnia
 CHUNK = 100
 ST_FAIL = [0]
+VIX = [None]   # ostatni odczyt VIX (ustawiany w main) – ostrzeżenie o zmienności rynku
 elapsed = lambda: (time.time() - T0) / 60
 
 
@@ -89,14 +90,14 @@ def row(sym, df, meta, spy3m, uf=1.0):
             "dvol": n((df.Close * df.Volume).tail(20).mean() / 1e6 * uf, 1), "atr_pct": n(r.ATR / r.Close * 100),
             "rs": n(rel * 100, 1) if rel is not None else None, "hi52_pct": n((r.Close / df.High.tail(252).max() - 1) * 100, 1),
             "above50": bool(r.Close > r.SMA50), "above200": bool(r.Close > r.SMA200) if r.SMA200 == r.SMA200 else None,
-            "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": pl, "cf": [ok, av, [[a_, b_] for a_, b_ in items]], "mc": mc_scenarios(df, pl, seed), "mcl": mc_long(df, seed=seed) if len(df) >= 200 else None}
+            "mom": n((df.Close.iloc[-22] / df.Close.iloc[0] - 1) * 100, 1) if len(df) >= 200 else None, "sma20": n(r.SMA20), "bar": [df.index[-1].strftime("%Y-%m-%d"), n(r.Open), n(r.High), n(r.Low), n(r.Close), int(r.Volume)], **sig, "plan": pl, "cf": [ok, av, [[a_, b_] for a_, b_ in items]], "mc": mc_scenarios(df, pl, seed), "mcl": mc_long(df, seed=seed) if len(df) >= 200 else None}
 
 
 # ---------- źródła informacji ----------
-def gnews(q, k=6):
+def gnews(q, k=6, loc=("en-US", "US", "US:en")):
     out = []
     try:
-        x = requests.get("https://news.google.com/rss/search", params={"q": q, "hl": "en-US", "gl": "US", "ceid": "US:en"}, headers=UA, timeout=15).text
+        x = requests.get("https://news.google.com/rss/search", params={"q": q, "hl": loc[0], "gl": loc[1], "ceid": loc[2]}, headers=UA, timeout=15).text
         for it in ET.fromstring(x).iter("item"):
             title, src = it.findtext("title", ""), it.findtext("source", "")
             if src and title.endswith(" - " + src):
@@ -124,14 +125,63 @@ def ynews(sym, k=6):
     return out
 
 
+PL_LOC = ("pl", "PL", "PL:pl")
+CATALYST = "(upgrade OR downgrade OR guidance OR earnings OR lawsuit OR acquisition OR FDA OR contract OR investigation)"
+
+
 def fetch_news(sym):
+    """Newsy spółki: Yahoo + Google News (nazwa/symbol) + zapytanie o katalizatory (analitycy, wyniki, sprawy prawne, M&A); dla GPW także po polsku."""
+    nm = NAME.get(sym)
+    base = f'"{nm}" stock when:7d' if "." in sym and nm else f"{sym} stock when:7d"
+    cat = f'{f"{chr(34)}{nm}{chr(34)}" if "." in sym and nm else sym} {CATALYST} when:7d'
+    extra = gnews(f'"{nm}" akcje OR notowania when:7d', 5, PL_LOC) if sym.endswith(".WA") and nm else []
     items, seen = [], set()
-    for a in sorted(ynews(sym) + gnews(f'"{NAME[sym]}" stock when:7d' if "." in sym and NAME.get(sym) else f"{sym} stock when:7d"), key=lambda a: -a["ts"]):
+    for a in sorted(ynews(sym) + gnews(base) + gnews(cat, 5) + extra, key=lambda a: -a["ts"]):
         key = re.sub(r"\W", "", a["title"].lower())[:40]
         if key and key not in seen and (not a["ts"] or time.time() - a["ts"] < 10 * 86400):
             seen.add(key)
             items.append(a)
-    return sym, items[:8]
+    return sym, items[:10]
+
+
+RSS_FEEDS = [("CNBC", "https://www.cnbc.com/id/100003114/device/rss/rss.html"), ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
+             ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"), ("Nasdaq", "https://www.nasdaq.com/feed/rssoutbound?category=Markets"),
+             ("Seeking Alpha", "https://seekingalpha.com/market_currents.xml"), ("Bankier.pl", "https://www.bankier.pl/rss/wiadomosci.xml")]
+
+
+def rss_feed(item, k=6):
+    name, url = item
+    out = []
+    try:
+        r = requests.get(url, headers=UA, timeout=15)
+        r.raise_for_status()
+        for it in ET.fromstring(r.content).iter("item"):
+            t = (it.findtext("title") or "").strip()
+            try:
+                ts = int(parsedate_to_datetime(it.findtext("pubDate")).timestamp())
+            except Exception:
+                ts = int(time.time())
+            if t and time.time() - ts < 3 * 86400:
+                out.append({"title": t, "url": it.findtext("link", ""), "src": name, "ts": ts, "sent": sentiment(t)})
+            if len(out) >= k:
+                break
+    except Exception:
+        pass
+    return name, out
+
+
+def market_feed():
+    """Newsy rynkowe z kilku źródeł; zwraca (lista, {źródło: liczba}) – panel pokazuje, które źródła zadziałały."""
+    with ThreadPoolExecutor(6) as ex:
+        res = list(ex.map(rss_feed, RSS_FEEDS))
+    items = [a for _, xs in res for a in xs] + ynews("SPY", 5) + gnews("stock market Wall Street when:2d", 6) + gnews("Federal Reserve economy when:3d", 4)
+    cnt = {n_: len(xs) for n_, xs in res}
+    seen, out = set(), []
+    for a in sorted(items, key=lambda a: -a["ts"]):
+        key = re.sub(r"\W", "", a["title"].lower())[:40]
+        if key and key not in seen:
+            seen.add(key); out.append(a)
+    return out[:24], cnt
 
 
 def stocktwits(sym):
@@ -266,9 +316,13 @@ def verdict(r, mood):
         up = (f["target"] / r["price"] - 1) * 100 if f.get("target") else None
         a += 0.5 if up is not None and up > 15 else -0.5 if up is not None and up < -5 else 0
         c["analyst"] = [cl(a), 0.15, f"konsensus: {f['rec']}" + (f", cena docelowa {f['target']} $ ({up:+.0f}%)" if up is not None else "")]
+    if r.get("mom_pct") is not None:
+        c["momentum"] = [cl((r["mom_pct"] - 50) / 25), 0.10, f"momentum 12-1 m-cy: {r['mom_pct']}. percentyl rynku ({r['mom']:+.0f}%)"]
+    if r.get("sec_rs") is not None:
+        c["sector"] = [cl(r["sec_rs"] / 8), 0.05, f"sektor {r.get('sector')}: mediana siły względnej 3M {r['sec_rs']:+.1f} pp"]
     c["market"] = [mood[1] * 2, 0.05, f"rynek: {mood[0].lower()}"]
     tot = sum(v[0] * v[1] for v in c.values()) / sum(v[1] for v in c.values())
-    nn = [v for k, v in c.items() if k != "market"]
+    nn = [v for k, v in c.items() if k not in ("market", "momentum", "sector")]   # momentum i sektor wynikają z cen – nie są niezależnym źródłem
     agree = sum(1 for v in nn if v[0] * tot > 0 and abs(v[0]) >= 0.3)
     conf = "wysoka" if len(nn) >= 3 and agree >= 3 else "średnia" if len(nn) >= 2 and agree >= 2 else "niska"
     if c["tech"][0] * tot < 0 and abs(c["tech"][0]) >= 0.3:
@@ -288,6 +342,14 @@ def verdict(r, mood):
         lv -= 1; flags.append("RSI > 78 – spółka wykupiona, obniżono ocenę")
     if lv >= 3 and mood[1] < 0:
         flags.append("Słaby rynek ogólny – zmniejsz wielkość pozycji")
+    if f.get("short") is not None and f["short"] > 15:
+        flags.append(f"Wysoki udział krótkiej sprzedaży ({f['short']:.0f}% free float) – ryzyko gwałtownych ruchów w obie strony")
+    if f.get("beta") is not None and f["beta"] > 1.8:
+        flags.append(f"Beta {f['beta']:.1f} – spółka porusza się wyraźnie mocniej niż rynek")
+    if r.get("atr_pct") and r["atr_pct"] > 6:
+        flags.append(f"Wysoka zmienność dzienna (ATR {r['atr_pct']:.1f}% ceny) – zmniejsz wielkość pozycji")
+    if lv >= 3 and VIX[0] is not None and VIX[0] > 25:
+        flags.append(f"VIX {VIX[0]:.0f} (>25) – podwyższona zmienność rynku, zmniejsz wielkość pozycji")
     if (r.get("reddit") or {}).get("rank", 999) <= 25:
         flags.append("Wysokie zainteresowanie na Reddit – ryzyko nagłych ruchów (hype)")
     if r.get("dq"):
@@ -528,6 +590,12 @@ def main():
     spy3m = float(spy.Close.iloc[-1] / spy.Close.iloc[-64] - 1)
     bm_us = spy3m
 
+    try:
+        vx = yf.download("^VIX", period="1mo", auto_adjust=True, progress=False)
+        vx.columns = vx.columns.get_level_values(0)
+        VIX[0] = float(vx.Close.iloc[-1])
+    except Exception:
+        VIX[0] = None
     # NAJPIERW (przed długim skanem rynku, żeby budżet czasu go nie ucinał): dane finansowe i newsy dla najważniejszych symboli
     FUND, NEWS = FUND0, NEWS0
     NAME.update({s: m.get("name", "") for s, m in uni.items()})
@@ -602,6 +670,22 @@ def main():
             continue
         if gap >= 4:
             r_["dq"].append(f"Notowania nieaktualne – ostatnia sesja {r_['bar'][0]}"); r_["dqs"] = True; stale.append(r_["symbol"])
+    # momentum 12-1 (percentyl w obrębie rynku) i siła sektora (mediana siły względnej 3M) – oceny przekrojowe
+    for mk in {r_["mkt"] for r_ in rows}:
+        sub = [r_ for r_ in rows if r_["mkt"] == mk and r_.get("mom") is not None]
+        if len(sub) >= 30:
+            srt = sorted(x["mom"] for x in sub)
+            for r_ in sub:
+                r_["mom_pct"] = round(100 * sum(v < r_["mom"] for v in srt) / (len(srt) - 1)) if len(srt) > 1 else None
+    secs = {}
+    for r_ in rows:
+        if r_.get("sector") and r_.get("rs") is not None and not r_["etf"]:
+            secs.setdefault((r_["mkt"], r_["sector"]), []).append(r_["rs"])
+    for r_ in rows:
+        v = secs.get((r_["mkt"], r_.get("sector")))
+        if v and len(v) >= 8:
+            srt = sorted(v)
+            r_["sec_rs"] = round(srt[len(srt) // 2], 1)
     if len(rows) < 100:
         raise SystemExit(f"Zbyt mało danych ({len(rows)}) – przerywam, żeby nie nadpisać strony")
     print(f"Etap 1: {len(rows)} płynnych spółek, {elapsed():.1f} min")
@@ -626,7 +710,7 @@ def main():
     cand = sorted(rows, key=lambda r: -(r["plan"]["quality"] if r["plan"] else abs(r["score"]) * 10))[:140]
     movers = sorted(rows, key=lambda r: -abs(r["change_pct"] or 0))[:20]
     focus = list(dict.fromkeys([r["symbol"] for r in cand] + [r["symbol"] for r in movers]))
-    news, market_news, st_trend = {}, [], []
+    news, market_news, st_trend, news_src = {}, [], [], {}
     if elapsed() < 15:
         with ThreadPoolExecutor(8) as ex:
             news = dict(ex.map(fetch_news, focus))
@@ -649,7 +733,7 @@ def main():
                 r["sector"] = r["fund"]["sector"]
             e = ea.get(s)
             r["earnings_days"] = e if e is not None and 0 <= e <= 10 else None
-        market_news = sorted(ynews("SPY", 5) + gnews("stock market Wall Street when:2d", 6) + gnews("Federal Reserve economy when:3d", 4), key=lambda a: -a["ts"])[:12]
+        market_news, news_src = market_feed()
         st_trend = [{"s": x["symbol"], "t": x.get("title", "")} for x in jget("https://api.stocktwits.com/api/2/trending/symbols.json").get("symbols", [])[:12]]
     # luki: spółki poza paczką bieżącego skanu korzystają z zapisanych wcześniej newsów i danych finansowych
     for r in rows:
@@ -777,7 +861,7 @@ def main():
     out = {"updated_at": time.time(), "indices": idx, "market": market, "market_by": market_by, "fng": {"score": n(fng.get("score"), 0), "rating": fng.get("rating")} if fng else None,
            "market_news": market_news, "news": news, "reddit": top_reddit, "st_trending": st_trend, "scanned": len(syms), "fx": fx,
            "diag": {"universe": len(syms), "attempted": attempted, "processed": len(rows), "skipped": attempted - len(rows), "cut": attempted < len(syms),
-                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "paper": ps_diag, "fx": len(fx) > 1, "minutes": round(elapsed(), 1), "cov": cov},
+                    "news": len(news), "fund": len(FUND), "fund_try": fstat["try"], "fund_ok": fstat["ok"], "news_cached": len(NEWS), "reddit": len(reddit), "stocktwits": ST_FAIL[0] < 3 and bool(st_trend), "fng": bool(fng), "notify": nt, "paper": ps_diag, "fx": len(fx) > 1, "minutes": round(elapsed(), 1), "cov": cov, "news_src": news_src},
            "results": rows}
     Path("docs").mkdir(exist_ok=True)
     Path("docs/results.json").write_text(json.dumps(out, separators=(",", ":"), allow_nan=False))

@@ -72,3 +72,9 @@ Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione
 ## Symulator: wejścia w trakcie sesji (v1.1)
 - Zlecenie z poprzedniej sesji wypełnia się wstępnie po dzisiejszym otwarciu (cena otwarcia jest znana od otwarcia); wieczorem pozycja jest potwierdzana zakończoną świecą, bez dubla. Zlecenia utworzone po otwarciu nadal czekają do następnej sesji.
 - Test A/B: każda rekomendacja „kupuj teraz” z trwającej sesji jest zapisywana z ceną z chwili sygnału (A) i porównywana z wejściem po następnym otwarciu (B) według tych samych reguł stopu i celów. Wyłączniki: `live_fill`, `live_test` w `paper_config.json`.
+
+## Analityka i newsy (v6.1)
+- Nowe składniki oceny: momentum 12-1 (percentyl w obrębie rynku, 10%) i siła sektora (mediana siły względnej 3M, 5%); nie liczą się do „zgodności źródeł”, bo wynikają z cen. Wagi nie były kalibrowane historycznie – backtest dotyczy samej techniki.
+- Nowe ostrzeżenia: wysoki udział krótkiej sprzedaży (>15%), beta >1,8, ATR >6% ceny, VIX >25.
+- Newsy spółek: Yahoo + Google News (nazwa/symbol) + zapytanie o katalizatory (analitycy, wyniki, sprawy prawne, M&A) + polskie źródła dla GPW; rozszerzony słownik fraz. Newsy rynkowe: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, Bankier.pl (panel statusu pokazuje, które źródła odpowiedziały).
+- Telefon: naprawiony układ (na wąskich ekranach treść zajmowała tylko ~60% szerokości), 2 kolumny kafelków, węższe tabele w symulatorze.

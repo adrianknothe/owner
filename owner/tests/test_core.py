@@ -46,6 +46,18 @@ def test_sentiment():
     assert sentiment("X beats estimates, raises guidance") > 0 > sentiment("X misses estimates amid class action")
 
 
+def test_momentum_sector_and_risk_flags():
+    base = {"score": 3, "above200": True, "cf": [6, 6, []], "price": 100, "rsi": 50, "change_pct": 1, "atr_pct": 7.0, "sector": "IT"}
+    a = dict(base, mom_pct=90, mom=40.0, sec_rs=5.0, fund={"short": 20.0, "beta": 2.1, "rec": None})
+    scan.VIX[0] = 30.0
+    scan.verdict(a, ("Byczy", 0.5)); scan.VIX[0] = None
+    assert "momentum" in a["comps"] and "sector" in a["comps"] and a["conf"] == "niska"   # nie zawyżają „zgodności źródeł”
+    fl = " ".join(a["flags"]); assert "krótkiej sprzedaży" in fl and "Beta 2.1" in fl and "ATR" in fl and "VIX 30" in fl
+    lo = dict(base, mom_pct=5, mom=-30.0); scan.verdict(lo, ("Byczy", 0.5))
+    hi = dict(base, mom_pct=95, mom=60.0); scan.verdict(hi, ("Byczy", 0.5))
+    assert hi["vscore"] > lo["vscore"]
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):
@@ -175,3 +187,4 @@ def test_data_quality_gate_and_cache_fallback():
 if __name__ == "__main__":
     test_confirmations_and_mc(); print("ok mc")
     test_data_quality_gate_and_cache_fallback(); print("ok dq")
+    test_momentum_sector_and_risk_flags(); print("ok mom")
