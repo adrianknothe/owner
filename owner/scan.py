@@ -752,12 +752,12 @@ def main():
     try:  # symulator portfela papierowego – po archiwum sygnałów, przed usunięciem świec z wierszy
         pcfg = paper.load_cfg()
         S = PAPER0 if PAPER0.get("v") else paper.new_state(pcfg, time.time())
-        need = sorted({p["sym"] for p in S["positions"]} | {o["sym"] for o in S["pending"]} | {"SPY"})
+        need = sorted({p["sym"] for p in S["positions"]} | {o["sym"] for o in S["pending"]} | {L["sym"] for L in S.get("live", [])[-60:]} | {"SPY"})
         S = paper.step(S, rows, fetch_bars(need), pcfg, time.time())
         txt = json.dumps(S, separators=(",", ":"), allow_nan=False, default=lambda o: o.item() if hasattr(o, "item") else str(o))
         Path("docs").mkdir(exist_ok=True)
         Path("docs/paper.json").write_text(txt)
-        ps_diag = {"enabled": pcfg["enabled"], "positions": len(S["positions"]), "pending": len(S["pending"]), "closed": len(S["closed"])}
+        ps_diag = {"enabled": pcfg["enabled"], "positions": len(S["positions"]), "pending": len(S["pending"]), "closed": len(S["closed"]), "live": len(S.get("live", []))}
     except Exception as e:
         print("paper:", e)
         if PAPER0:   # w razie błędu zachowaj poprzedni stan (Pages podmienia całą stronę)

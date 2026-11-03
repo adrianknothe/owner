@@ -68,3 +68,7 @@ Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione
 - Kontrola jakości: skok ceny >35% (split/błąd), brak obrotu 5 sesji, nieaktualna ostatnia sesja → rekomendacja kupna jest blokowana i oznaczona.
 - Daty wyników kwartalnych sprawdzane są także dla wszystkich spółek z planem wejścia.
 - Harmonogram `*/10`: GitHub nie gwarantuje terminów (opóźnienia bywają duże), a Yahoo i tak opóźnia ceny ~15 min – realna świeżość to zwykle 10–25 min.
+
+## Symulator: wejścia w trakcie sesji (v1.1)
+- Zlecenie z poprzedniej sesji wypełnia się wstępnie po dzisiejszym otwarciu (cena otwarcia jest znana od otwarcia); wieczorem pozycja jest potwierdzana zakończoną świecą, bez dubla. Zlecenia utworzone po otwarciu nadal czekają do następnej sesji.
+- Test A/B: każda rekomendacja „kupuj teraz” z trwającej sesji jest zapisywana z ceną z chwili sygnału (A) i porównywana z wejściem po następnym otwarciu (B) według tych samych reguł stopu i celów. Wyłączniki: `live_fill`, `live_test` w `paper_config.json`.

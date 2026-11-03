@@ -77,6 +77,7 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
   curve:[{d:'2026-01-02',e:10000,spy:500},{d:'2026-01-05',e:10200,spy:505}],pending:[{sym:'BRK-B',shares:5,zlo:99,zhi:100,stop:95,t1:106,t2:112}],positions:[{sym:'AAA<i>',shares:10,entry:100,mark:104,stop:96,t1:106,t2:112,hold:2,half:false,setup:'Trend'}],
   todo:[{ts:1.7e9,k:'sell',s:'XYZ',x:'XYZ.US',m:'Sprzedano 10 szt. XYZ'}],journal:[{ts:1.7e9,t:'reject',s:'Q',m:'Odrzucono <script>'}],closed:[{sym:'C',setup:'Trend',entry:10,exit:11,pnl_pct:10,r:1.2,hold:3}]};
  const txt=simCopy(PP);assert(txt.includes('KUP BRK.B.US')&&txt.includes('SPRZEDAJ XYZ.US')&&txt.includes('TRZYMAJ'));drawSim();
+ PP.live=[{sym:'ABC',setup:'Trend',ts:1,px:10,a:{st:'otwarta',ret:2.5,r:.8},b:{st:'czeka na otwarcie',ret:null,r:null}}];PP.live_stats={n:1,cmp:0};PP.equity_live=PP.equity+5;PP.positions.length&&(PP.positions[0].prov=true,PP.positions[0].live=PP.positions[0].mark);drawSim();assert($('#simb').innerHTML.includes('kupić od razu')&&$('#simb').innerHTML.includes('ABC'));
  PP.curve=[];PP.pending=[];PP.positions=[];PP.todo=[];PP.journal=[];PP.closed=[];PP.halt=null;drawSim();console.log('FEATURES7 OK')})().catch(e=>{console.error('FAIL7',e);process.exit(1)});
 
 // portfel: migawka wartości, plany inwestycyjne z odpowiednikami, decyzja łączona (krótki + długi termin)
