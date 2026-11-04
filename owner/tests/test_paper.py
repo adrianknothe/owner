@@ -66,9 +66,15 @@ def test_gap_below_stop_cancels_and_partial_bar_ignored():
 def test_no_orders_from_unfinished_session():
     S = paper.new_state(CFG, T("2026-01-05 15:00"))
     paper.step(S, [row()], {"SPY": spy("2026-01-02")}, CFG, T("2026-01-05 15:00"))          # sygnał z dzisiejszej, niezakończonej sesji
-    assert not S["pending"]
-    paper.step(S, [row()], {"SPY": spy("2026-01-05")}, CFG, T("2026-01-05 21:30"))          # po zamknięciu – wolno
-    assert len(S["pending"]) == 1
+    assert not S["pending"] and len(S["positions"]) == 1 and S["positions"][0]["src"] == "sygnał z sesji"   # sygnał z trwającej sesji: wejście od razu, nie zlecenie na jutro
+    paper.step(S, [row()], {"SPY": spy("2026-01-05")}, CFG, T("2026-01-05 21:30"))          # po zamknięciu: ta sama spółka nie dostaje drugiego zlecenia
+    assert not S["pending"] and len(S["positions"]) == 1
+    cfg2 = dict(CFG, live_trade=False)
+    S2 = paper.new_state(cfg2, T("2026-01-05 15:00"))
+    paper.step(S2, [row()], {"SPY": spy("2026-01-02")}, cfg2, T("2026-01-05 15:00"))
+    assert not S2["pending"] and not S2["positions"]                                          # bez wejść z sesji: sygnał z niezakończonej sesji czeka
+    paper.step(S2, [row()], {"SPY": spy("2026-01-05")}, cfg2, T("2026-01-05 21:30"))
+    assert len(S2["pending"]) == 1
 
 
 def test_idempotent_and_rejections_logged_once():
@@ -165,6 +171,40 @@ def test_live_signal_ab_comparison():
     L = S["live"][0]
     assert L["a"]["st"] == "zamknięta" and L["b"]["st"] == "zamknięta" and L["a"]["ret"] > L["b"]["ret"] > 0   # wejście od razu (100.0) vs następne otwarcie (100.5)
     st = S["live_stats"]; assert st["cmp"] == 1 and st["a_better"] == 1 and st["avg_a"] > st["avg_b"]
+
+
+def test_limit_order_fills_on_pullback_or_cancels():
+    S = run_first()                                                            # zlecenie z sygnału 05.01, limit = 100.2*1.005 = 100.70
+    X = bars([("2026-01-05", 100, 101, 99, 100), ("2026-01-06", 101.0, 103, 100.5, 102.5)])
+    paper.step(S, [], {"SPY": spy("2026-01-06"), "XYZ": X}, CFG, T("2026-01-07 08:00"))      # otwarcie powyżej limitu, ale cena wróciła do limitu
+    p = S["positions"][0]; assert abs(p["entry"] - 100.701) < 0.01 and p["hold"] == 1 and "stop" in p
+    S = run_first()
+    X = bars([("2026-01-05", 100, 101, 99, 100), ("2026-01-06", 102.0, 104, 101.0, 103)])    # cena nie wróciła: bez gonienia
+    paper.step(S, [], {"SPY": spy("2026-01-06"), "XYZ": X}, CFG, T("2026-01-07 08:00"))
+    assert not S["positions"] and not S["pending"] and any("nie wróciła" in j["m"] for j in S["journal"])
+
+
+def test_live_entry_is_stopped_conservatively_on_signal_day():
+    S = paper.new_state(CFG, T("2026-01-06 08:00"))
+    r = row(bar=["2026-01-06", 100, 101, 99, 100, 1000], price=100.0)
+    paper.step(S, [r], {"SPY": spy("2026-01-05")}, CFG, T("2026-01-06 15:00"))
+    assert len(S["positions"]) == 1 and abs(S["positions"][0]["entry"] - 100.05) < 0.01
+    X = bars([("2026-01-05", 100, 101, 99, 100), ("2026-01-06", 100, 107, 95, 104)])        # dołek poniżej stopa i cel w tej samej sesji: liczymy stop
+    paper.step(S, [], {"SPY": spy("2026-01-06"), "XYZ": X}, CFG, T("2026-01-07 08:00"))
+    assert not S["positions"] and S["closed"][0]["pnl"] < 0 and S["closed"][0]["exit"] < 97
+
+
+def test_xtb_tickets_have_exact_fields():
+    S = run_first()
+    b = [x for x in S["todo"] if x["k"] == "buy"][0]
+    assert b["x"] == "XYZ.US" and b["qty"] == 20 and b["lim"] == 100.7 and b["sl"] == 96.0 and b["t1"] == 106.0 and b["t2"] == 112.0 and b["usd"] == 2000.0 and b["pre"]
+    X = bars([("2026-01-05", 100, 101, 99, 100), ("2026-01-06", 100.1, 107, 99.5, 106)])
+    paper.step(S, [], {"SPY": spy("2026-01-06"), "XYZ": X}, CFG, T("2026-01-07 08:00"))
+    mv = [x for x in S["todo"] if x["k"] == "move"][0]; sl = [x for x in S["todo"] if x["k"] == "sell"][0]
+    assert mv["qty"] == 10 and abs(mv["sl"] - 100.15) < 0.01 and sl["qty"] == 10 and sl["left"] == 10 and sl["why"] == "cel 1"
+    S2 = paper.new_state(CFG, T("2026-01-06 08:00"))
+    paper.step(S2, [row(bar=["2026-01-06", 100, 101, 99, 100, 1000], price=100.0)], {"SPY": spy("2026-01-05")}, CFG, T("2026-01-06 15:00"))
+    lv = [x for x in S2["todo"] if x["k"] == "buy"][0]; assert lv["live"] and lv["px"] == 100.0 and lv["qty"] >= 1
 
 
 if __name__ == "__main__":

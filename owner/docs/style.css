@@ -164,3 +164,4 @@ table.mini{font-size:13px}.box.dark{background:linear-gradient(160deg,#12372a,#0
  .row>select{flex:1 1 calc(50% - 8px);font-size:14px;padding:8px 6px;text-overflow:ellipsis}.row>input[type=number],.row>input[type=text]{flex:0 1 84px}
 }
 @media(max-width:700px){table.tl th:nth-child(4),table.tl td:nth-child(4){display:none}}
+.xk{padding:10px 0;border-bottom:1px solid var(--line)}.xk:last-of-type{border:0}.xkh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.xkh .mute{margin-left:auto}.xk .mg{margin-bottom:6px}

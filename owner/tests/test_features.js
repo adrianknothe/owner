@@ -105,4 +105,8 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
  assert(as.th.p==8&&as.act.includes('teza w mocy')&&as.th.pb>0&&as.th.pb<100);
  const html=lossHtml({H:[{...hw,A:aw},{...hs,A:as}]});assert(html.includes('WEAK')&&html.includes('STR')&&html.includes('niepotwierdzona')&&html.indexOf('WEAK')<html.indexOf('STR'));
  assert.strictEqual(thesis({y:'E',x:row({etf:true}),V:{total:-30},type:'ETF'}),null);console.log('FEATURES9 OK')})().catch(e=>{console.error('FAIL9',e);process.exit(1)});
+// symulator: precyzyjne zlecenia do XTB
+(async()=>{const now=Date.now()/1e3;PP.todo=[{ts:now,k:'buy',s:'ABC',x:'ABC.US',m:'m',qty:5,lo:99,hi:100,lim:100.5,sl:95,t1:106,t2:112,usd:500,live:true,px:99.8},{ts:now-5,k:'move',s:'DEF',x:'DEF.US',m:'m',qty:3,sl:50.2,t2:70},{ts:now-9,k:'sell',s:'GHI',x:'GHI.US',m:'m',qty:4,px:12.3,why:'cel 1',left:4}];PP.positions=[{sym:'DEF',shares:3,shares0:6,entry:50.2,mark:60,stop:50.2,t1:60,t2:70,hold:4,half:true,setup:'Trend'}];PP.pending=[];
+ const tx=simCopy(PP);assert(tx.includes('KUP ABC.US | 5 szt. | LIMIT ≤ 100,50')&&tx.includes('TP1 106,00 (2 szt.)')&&tx.includes('TP2 112,00 (3 szt.)')&&tx.includes('ZMIEŃ SL DEF.US')&&tx.includes('SPRZEDAJ GHI.US | 4 szt. | cel 1')&&tx.includes('TRZYMAJ DEF.US'));
+ drawSim();const h=$('#simb').innerHTML;assert(h.includes('Zlecenia do wykonania w XTB')&&h.includes('LIMIT ≤ 100,50')&&h.includes('Układ zleceń w XTB')&&h.includes('TERAZ'));console.log('FEATURES10 OK')})().catch(e=>{console.error('FAIL10',e);process.exit(1)});
 `);

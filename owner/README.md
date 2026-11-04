@@ -81,3 +81,8 @@ Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione
 
 ## Pozycje w stracie (v6.2)
 Zakładka „Portfel XTB”: dla akcji ze stratą ≥10% panel „Sprawdzian tezy” liczy 8 warunków (trend SMA200/SMA50, momentum 12-1, siła względna, fundamenty, cena docelowa analityków, bilans newsów, krótki termin), pokazuje wymagany wzrost do ceny zakupu i szansę jego osiągnięcia w 12 mies. (symulacja bez dryfu – nie prognoza), alternatywy ze skanera oraz ogólną notę podatkową (Polska). Decyzja zależy od przyszłych przesłanek, nie od ceny zakupu. Przy mniej niż 5 dostępnych warunkach ocena jest wstrzymana.
+
+## Symulator v1.2 – wejścia od razu i precyzyjne zlecenia XTB
+- Sygnał „kupuj teraz” z trwającej sesji otwiera wirtualną pozycję od razu (cena z chwili sygnału + poślizg, te same limity ryzyka i sektora); `live_trade` w `paper_config.json` to wyłącza. Dzień wejścia liczony ostrożnie (tylko stop).
+- Zlecenia z poprzedniej sesji działają jak LIMIT kupna (górna granica strefy +0,5%): otwarcie ≤ limit → po cenie otwarcia; otwarcie powyżej limitu → wypełnienie po limicie, jeśli cena cofnie się w ciągu sesji; w przeciwnym razie zlecenie wygasa.
+- Panel „Zlecenia do wykonania w XTB”: dla każdego zlecenia ilość, typ i limit, strefa, wartość, SL, TP1 (½ pozycji), TP2 (reszta), status w symulatorze; „ZMIEŃ SL” po realizacji TP1; „SPRZEDAJ”. Przycisk „Zrobione” (zapamiętywany w przeglądarce) i kopiowanie listy. Tabela „Układ zleceń w XTB” pokazuje, jakie zlecenia stałe powinny stać przy otwartych pozycjach.

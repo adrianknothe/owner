@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 VERSION = "1.0"
 DEFAULTS = {"enabled": True, "capital": 10000.0, "risk_pct": 1.0, "max_positions": 8, "max_weight_pct": 20.0, "max_sector_pct": 40.0, "cost_pct": 0.1, "slippage_pct": 0.05,
             "daily_loss_limit_pct": 3.0, "weekly_loss_limit_pct": 6.0, "max_drawdown_halt_pct": 15.0, "min_quality": 60, "min_confirm_frac": 0.6, "min_dvol_musd": 20.0,
-            "allow_etf": False, "markets": ["US"], "max_hold_sessions": 15, "cooldown_sessions": 5, "reset_halt": False, "start_date": None, "live_fill": True, "live_test": True, "live_max_day": 12}
+            "allow_etf": False, "markets": ["US"], "max_hold_sessions": 15, "cooldown_sessions": 5, "reset_halt": False, "start_date": None, "live_fill": True, "live_trade": True, "live_test": True, "live_max_day": 12}
 
 
 def load_cfg(paths=("paper_config.json", "owner/paper_config.json")):
@@ -65,31 +65,46 @@ def _completed(df, now):
     return df[[d < t or (d == t and _after_close(now)) for d in df.index.strftime("%Y-%m-%d")]]
 
 
-def _log(S, now, typ, sym, text, todo=None, **kw):
+def _log(S, now, typ, sym, text, todo=None, tk=None, **kw):
     S["journal"].append({"ts": int(now), "t": typ, "s": sym, "m": text, **kw})
     S["journal"] = S["journal"][-400:]
-    if todo:
-        S["todo"].append({"ts": int(now), "k": todo, "s": sym, "x": xtb(sym), "m": text})
+    if todo:   # zlecenie do ręcznego wykonania w XTB; tk = pola zlecenia (ilość, limit, SL, TP...)
+        S["todo"].append({"ts": int(now), "k": todo, "s": sym, "x": xtb(sym), "m": text, **(tk or {})})
 
 
-def _fill(S, o, op, d, cfg, now, prov=False):
-    """Wypełnienie zlecenia po cenie otwarcia sesji d (z poślizgiem i kosztami). prov=True: sesja trwa, cena otwarcia już znana."""
+def _fill(S, o, bar, d, cfg, now, prov=False):
+    """Zlecenie LIMIT kupna (limit = górna granica strefy +0,5%). bar = (otwarcie, minimum) sesji d.
+    Otwarcie ≤ limit → po cenie otwarcia (z poślizgiem); otwarcie powyżej limitu → czeka, aż cena cofnie się do limitu (wypełnienie po limicie).
+    prov=True: sesja trwa – brak cofnięcia oznacza 'wait'. Zwraca 'ok' | 'wait' | 'cancel'."""
+    op, lo = bar
     slip, cst = cfg["slippage_pct"] / 100, cfg["cost_pct"] / 100
-    why = "otwarcie poniżej stopa (luka)" if op <= o["stop"] else "cena uciekła powyżej strefy wejścia" if op > o["zhi"] * 1.005 else None
-    px = op * (1 + slip)
+    lim = o["zhi"] * 1.005
+    why, ed, px = None, None, op * (1 + slip)
+    if op <= o["stop"]:
+        why = "otwarcie poniżej stopa (luka)"
+    elif op > lim:
+        if lo is not None and lo <= lim:
+            px, ed = lim, d
+        elif prov:
+            return "wait"
+        else:
+            why = "cena nie wróciła do limitu kupna"
     sh = min(o["shares"], int(S["cash"] / (px * (1 + cst)))) if not why else 0
     if not why and sh < 1:
         why = "brak gotówki"
     if why:
-        _log(S, now, "cancel", o["sym"], f"Zlecenie anulowane: {why} (otwarcie {op:.2f}, strefa {o['zlo']}–{o['zhi']})", d=d)
-        return False
+        _log(S, now, "cancel", o["sym"], f"Zlecenie anulowane: {why} (otwarcie {op:.2f}, limit {lim:.2f}, strefa {o['zlo']}–{o['zhi']})", d=d)
+        return "cancel"
     fee = px * sh * cst
     S["cash"] -= px * sh + fee
-    S["positions"].append({"sym": o["sym"], "name": o.get("name", ""), "sector": o.get("sector", ""), "setup": o["setup"], "shares": sh, "shares0": sh, "entry": px, "entry_d": d,
-                           "stop": o["stop"], "stop0": o["stop"], "t1": o["t1"], "t2": o["t2"], "fees": fee, "realized": 0.0, "proceeds": 0.0, "sold": 0, "half": False,
-                           "hold": 0, "last": o["bd"], "mark": px, "why": o.get("why", []), "prov": prov})
-    _log(S, now, "fill", o["sym"], f"Kupiono {sh} szt. po {px:.2f} (otwarcie {d} + poślizg)" + (" – wstępnie, sesja trwa" if prov else ""), d=d)
-    return True
+    pos = {"sym": o["sym"], "name": o.get("name", ""), "sector": o.get("sector", ""), "setup": o["setup"], "shares": sh, "shares0": sh, "entry": px, "entry_d": d,
+           "stop": o["stop"], "stop0": o["stop"], "t1": o["t1"], "t2": o["t2"], "fees": fee, "realized": 0.0, "proceeds": 0.0, "sold": 0, "half": False,
+           "hold": 0, "last": o["bd"], "mark": px, "why": o.get("why", []), "prov": prov, "src": "zlecenie"}
+    if ed:
+        pos["ed"] = ed
+    S["positions"].append(pos)
+    _log(S, now, "fill", o["sym"], f"Kupiono {sh} szt. po {px:.2f} ({'limit po cofnięciu ceny' if ed else 'otwarcie ' + d + ' + poślizg'})" + (" – wstępnie, sesja trwa" if prov else ""), d=d)
+    return "ok"
 
 
 def _min_fill_day(o):
@@ -115,7 +130,8 @@ def _live_fill(S, raw, cfg, now):
     for o in S["pending"]:
         b = _live_bar(raw.get(o["sym"]), now)
         if b is not None and o["bd"] < t and _min_fill_day(o) <= t:
-            _fill(S, o, float(b.Open), t, cfg, now, prov=True)
+            if _fill(S, o, (float(b.Open), float(b.Low)), t, cfg, now, prov=True) == "wait":
+                keep.append(o)
         else:
             keep.append(o)
     S["pending"] = keep
@@ -149,7 +165,7 @@ def _process_pending(S, comp, cfg, now):
             continue
         nb = nb2
         op, d = float(nb.iloc[0].Open), nb.index[0].strftime("%Y-%m-%d")
-        _fill(S, o, op, d, cfg, now)
+        _fill(S, o, (op, float(nb.iloc[0].Low)), d, cfg, now)
     S["pending"] = keep
 
 
@@ -162,7 +178,8 @@ def _sell(S, p, qty, px, d, reason, cfg, now):
     p["proceeds"] += proceeds
     p["sold"] += qty
     p["shares"] -= qty
-    _log(S, now, "exit", p["sym"], f"Sprzedano {qty} szt. {p['sym']} po {net:.2f} – {reason} ({d})", todo="sell", d=d)
+    _log(S, now, "exit", p["sym"], f"Sprzedano {qty} szt. {p['sym']} po {net:.2f} – {reason} ({d})", todo="sell", d=d,
+         tk={"qty": qty, "px": round(net, 2), "why": reason, "d": d, "left": p["shares"]})
 
 
 def _manage(S, comp, cfg, now):
@@ -179,13 +196,17 @@ def _manage(S, comp, cfg, now):
             p["hold"] += 1
             p["prov"] = False
             p["last"], p["mark"] = d, cl
+            entry_day = p.get("ed") == d   # wejście w trakcie sesji: nie wiemy, czy dołek był przed czy po wejściu – liczymy ostrożnie (tylko stop)
             if lo <= p["stop"]:   # stop ma pierwszeństwo także przy świecy z celem (nie zakładamy korzystnej kolejności)
-                _sell(S, p, p["shares"], min(op, p["stop"]), d, "stop" if not p["half"] else "stop (po realizacji części)", cfg, now)
-            else:
+                _sell(S, p, p["shares"], p["stop"] if entry_day else min(op, p["stop"]), d, "stop" if not p["half"] else "stop (po realizacji części)", cfg, now)
+            elif not entry_day:
                 if not p["half"] and hi >= p["t1"]:
                     q = p["shares"] // 2 if p["shares"] >= 2 else p["shares"]
                     _sell(S, p, q, max(op, p["t1"]), d, "cel 1", cfg, now)
                     p["half"], p["stop"] = True, p["entry"]
+                    if p["shares"] > 0:
+                        _log(S, now, "move", p["sym"], f"Po realizacji połowy: przesuń SL dla pozostałych {p['shares']} szt. na cenę wejścia {p['entry']:.2f}, TP2 {p['t2']}", todo="move",
+                             tk={"qty": p["shares"], "sl": round(p["entry"], 2), "t2": p["t2"], "d": d})
                 if p["shares"] > 0 and p["half"] and hi >= p["t2"]:
                     _sell(S, p, p["shares"], max(op, p["t2"]), d, "cel 2", cfg, now)
                 elif p["shares"] > 0 and p["half"] and sma.loc[ts] == sma.loc[ts] and cl < sma.loc[ts]:
@@ -303,7 +324,7 @@ def _new_orders(S, rows, cfg, eq, lim, now):
         reserved += shares * p["entry"] * (1 + cst)
         expo[sec] = expo.get(sec, 0) + shares * p["entry"]
         _log(S, now, "order", sym, f"Zlecenie kupna {shares} szt. {sym} ({p['setup']}) w strefie {p['zlo']}–{p['zhi']}, stop {p['stop']} ({p['dn']}%), cel 1 {p['t1']} (+{p['up1']}%), cel 2 {p['t2']}",
-             todo="buy", d=bd)
+             todo="buy", d=bd, tk={"qty": shares, "lo": p["zlo"], "hi": p["zhi"], "lim": round(p["zhi"] * 1.005, 2), "sl": p["stop"], "t1": p["t1"], "t2": p["t2"], "usd": round(shares * p["entry"], 2), "pre": True, "d": bd})
 
 
 def stats(S):
@@ -388,7 +409,41 @@ def _eval_live(S, comp, cfg, now):
             L["b"] = {"st": "czeka na otwarcie", "ret": None, "r": None}
 
 
-def _live_signals(S, rows, cfg, now):
+def _try_live_buy(S, r, cfg, eq, lim, now):
+    """Wejście od razu po cenie z chwili sygnału (z poślizgiem), z tymi samymi limitami ryzyka co zlecenia. Zwraca listę powodów odmowy (pusta = kupiono)."""
+    p, sym, t = r["plan"], r["symbol"], _today(now)
+    slip, cst = cfg["slippage_pct"] / 100, cfg["cost_pct"] / 100
+    sec = r.get("sector") or (r.get("fund") or {}).get("sector") or "—"
+    why = []
+    if lim["blocked"]:
+        why.append("limity ryzyka: " + ", ".join(lim["blocked"]))
+    if len(S["positions"]) + len(S["pending"]) >= cfg["max_positions"]:
+        why.append("osiągnięto maksymalną liczbę pozycji")
+    expo = sum(x["shares"] * x["mark"] for x in S["positions"] if x["sector"] == sec) + sum(o["shares"] * o["entry"] for o in S["pending"] if o["sector"] == sec)
+    if expo / max(eq, 1) * 100 >= cfg["max_sector_pct"]:
+        why.append(f"limit sektora {sec}")
+    px = float(r["price"]) * (1 + slip)
+    reserved = sum(o["shares"] * o["entry"] * (1 + cst) for o in S["pending"])
+    sh = 0
+    if not why:
+        rps = (px - p["stop"]) + px * cst * 2
+        sh = int(min(eq * cfg["risk_pct"] / 100 / rps, eq * cfg["max_weight_pct"] / 100 / px, (S["cash"] - reserved) / (px * (1 + cst))))
+        if sh < 1:
+            why.append("zbyt mała pozycja przy tych limitach")
+    if why:
+        return why
+    fee = px * sh * cst
+    S["cash"] -= px * sh + fee
+    prev = (datetime.strptime(t, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    S["positions"].append({"sym": sym, "name": r.get("name", ""), "sector": sec, "setup": p["setup"], "shares": sh, "shares0": sh, "entry": px, "entry_d": t, "stop": p["stop"], "stop0": p["stop"],
+                           "t1": p["t1"], "t2": p["t2"], "fees": fee, "realized": 0.0, "proceeds": 0.0, "sold": 0, "half": False, "hold": 0, "last": prev, "ed": t, "mark": px,
+                           "live": round(float(r["price"]), 4), "prov": True, "src": "sygnał z sesji", "why": (r.get("reasons") or [])[:3]})
+    _log(S, now, "fill", sym, f"Kupiono od razu {sh} szt. {sym} po {px:.2f} (cena z chwili sygnału + poślizg)", d=t, todo="buy",
+         tk={"qty": sh, "px": round(float(r["price"]), 2), "lo": p["zlo"], "hi": p["zhi"], "lim": round(p["zhi"] * 1.005, 2), "sl": p["stop"], "t1": p["t1"], "t2": p["t2"], "usd": round(px * sh, 2), "live": True, "d": t})
+    return []
+
+
+def _live_signals(S, rows, cfg, now, eq=None, lim=None):
     """Rejestr rekomendacji „kupuj teraz” z trwającej sesji – do testu: wejść od razu czy czekać na następne otwarcie."""
     t = _today(now)
     if _after_close(now):
@@ -412,6 +467,12 @@ def _live_signals(S, rows, cfg, now):
         S["live"].append({"id": f"{sym}-{t}", "sym": sym, "name": r.get("name", ""), "d": t, "ts": int(now), "px": px, "setup": p["setup"], "zlo": p["zlo"], "zhi": p["zhi"], "stop": p["stop"], "t1": p["t1"], "t2": p["t2"],
                           "up1": p["up1"], "q": p["quality"]})
         n_today += 1
+        L = S["live"][-1]
+        if cfg.get("live_trade") and eq is not None:
+            bad = _try_live_buy(S, r, cfg, eq, lim, now)
+            L["traded"] = not bad
+            if bad:
+                L["rej"] = bad[0]
         _log(S, now, "live", sym, f"Rekomendacja „kupuj teraz” {sym} ({p['setup']}) po {px:.2f} – test: wejście od razu vs następne otwarcie", d=t)
     S["live"] = S["live"][-150:]
 
@@ -452,7 +513,7 @@ def step(S, rows, bars, cfg, now):
     lim = _limits(S, cfg, eq, now)
     _new_orders(S, rows, cfg, eq, lim, now)
     if cfg["live_test"]:
-        _live_signals(S, rows, cfg, now)
+        _live_signals(S, rows, cfg, now, eq, lim)
         _eval_live(S, comp, cfg, now)
     S.update(stats=stats(S), updated=int(now), cfg=cfg, limits=lim, equity=round(eq, 2), equity_live=round(_live_marks(S, bars, now), 2), live_stats=live_stats(S))
     return S
