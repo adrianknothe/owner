@@ -78,3 +78,6 @@ Ograniczenia: tylko USA w USD, bez dywidend/podatków/FX, dane Yahoo opóźnione
 - Nowe ostrzeżenia: wysoki udział krótkiej sprzedaży (>15%), beta >1,8, ATR >6% ceny, VIX >25.
 - Newsy spółek: Yahoo + Google News (nazwa/symbol) + zapytanie o katalizatory (analitycy, wyniki, sprawy prawne, M&A) + polskie źródła dla GPW; rozszerzony słownik fraz. Newsy rynkowe: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, Bankier.pl (panel statusu pokazuje, które źródła odpowiedziały).
 - Telefon: naprawiony układ (na wąskich ekranach treść zajmowała tylko ~60% szerokości), 2 kolumny kafelków, węższe tabele w symulatorze.
+
+## Pozycje w stracie (v6.2)
+Zakładka „Portfel XTB”: dla akcji ze stratą ≥10% panel „Sprawdzian tezy” liczy 8 warunków (trend SMA200/SMA50, momentum 12-1, siła względna, fundamenty, cena docelowa analityków, bilans newsów, krótki termin), pokazuje wymagany wzrost do ceny zakupu i szansę jego osiągnięcia w 12 mies. (symulacja bez dryfu – nie prognoza), alternatywy ze skanera oraz ogólną notę podatkową (Polska). Decyzja zależy od przyszłych przesłanek, nie od ceny zakupu. Przy mniej niż 5 dostępnych warunkach ocena jest wstrzymana.

@@ -163,3 +163,4 @@ table.mini{font-size:13px}.box.dark{background:linear-gradient(160deg,#12372a,#0
 @media(max-width:700px){
  .row>select{flex:1 1 calc(50% - 8px);font-size:14px;padding:8px 6px;text-overflow:ellipsis}.row>input[type=number],.row>input[type=text]{flex:0 1 84px}
 }
+@media(max-width:700px){table.tl th:nth-child(4),table.tl td:nth-child(4){display:none}}

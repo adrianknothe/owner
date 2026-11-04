@@ -92,4 +92,17 @@ CM=['AAA','BBB'];FD={};drawCmp().then(()=>{console.log('FEATURES OK')}).catch(e=
  const bad=row({symbol:'BAD',lv:0,lt:D.results[1].lt});assert.strictEqual(advise({y:'BAD',x:bad,m:{},V:{total:-40},type:'Akcje',w:3}).act,'Sprzedaj');
  const ea=advise(e);assert(ea.act.startsWith('Trzymaj plan')&&ea.why.some(w=>w.includes('SPY'))&&!ea.why.some(w=>w.includes('Poziom obrony')));
  assert(plansHtml().includes('nadwaga')&&plansHtml().includes('Core S&amp;P 500'));drawPf();console.log('FEATURES8 OK')})().catch(e=>{console.error('FAIL8',e);process.exit(1)});
+// portfel: sprawdzian tezy dla pozycji w stracie
+(async()=>{const row=(o)=>({name:'N',price:100,cur:'USD',lv:2,vscore:0,conf:'średnia',compl:80,flags:[],reasons:[],atr_pct:2,etf:false,above200:true,above50:true,rsi:50,plan:null,sector:'IT',lt:null,mkt:'US',...o});
+ const lt=(s,a,up)=>({s,l:'x',a,cov:80,p:{},why:[],fl:[],up});
+ const weakX=row({symbol:'WEAK',lv:1,above200:false,above50:false,mom_pct:20,rs:-10,news_n:3,news_sent:-2,lt:lt(45,'Trzymaj',-5),mcl:{q:[-50,-30,-10,15,60]}}),alt=row({symbol:'ALT',lv:2,lt:lt(82,'Gromadź',20)}),
+  strongX=row({symbol:'STR',lv:2,mom_pct:80,rs:5,news_n:2,news_sent:3,lt:lt(70,'Trzymaj',20),mcl:{q:[-30,-10,5,25,70]}});
+ D={results:[weakX,alt,strongX],indices:[],news:{},market_news:[],fx:{}};FD={};NT={};PF={v:2,acct:'PLN',snap:{asOf:1,file:'x',open:{}},closed:{},cash:{}};
+ const hw={y:'WEAK',x:weakX,m:{},V:{total:-45,va:1000},type:'Akcje',w:5},hs={y:'STR',x:strongX,m:{},V:{total:-20,va:500},type:'Akcje',w:5};
+ const aw=advise(hw),as=advise(hs);
+ assert(aw.th.p==0&&aw.th.n==8&&aw.act.includes('zamknięcie')&&aw.cls=='a-sell');near(aw.th.need,81.82,.1);assert(aw.th.pb<=5);
+ assert(aw.alts.some(a=>a.symbol=='ALT')&&aw.why.some(w=>w.includes('Droga do ceny zakupu'))&&aw.why.some(w=>w.includes('Podatek')));
+ assert(as.th.p==8&&as.act.includes('teza w mocy')&&as.th.pb>0&&as.th.pb<100);
+ const html=lossHtml({H:[{...hw,A:aw},{...hs,A:as}]});assert(html.includes('WEAK')&&html.includes('STR')&&html.includes('niepotwierdzona')&&html.indexOf('WEAK')<html.indexOf('STR'));
+ assert.strictEqual(thesis({y:'E',x:row({etf:true}),V:{total:-30},type:'ETF'}),null);console.log('FEATURES9 OK')})().catch(e=>{console.error('FAIL9',e);process.exit(1)});
 `);
